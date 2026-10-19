@@ -114,6 +114,11 @@ def descrever_clima(dados: dict) -> str:
             f"chance de chuva {dia['precipitation_probability_max'][0]}%.")
 
 
+def clima_curto(dados: dict) -> str:
+    atual = dados["current"]
+    return f"{round(atual['temperature_2m'])} °C, {_WMO.get(atual['weather_code'], 'tempo indefinido')} em São Paulo"
+
+
 def buscar_clima(timeout: float = 10.0) -> dict:
     with urllib.request.urlopen(URL_CLIMA, timeout=timeout) as resposta:
         return json.load(resposta)

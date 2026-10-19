@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Jarvis — aviso</title>
+  <style>
+    @font-face { font-family: "Michroma"; src: url("fontes/michroma.woff2") format("woff2"); }
+    @font-face { font-family: "Saira"; src: url("fontes/saira.woff2") format("woff2"); font-weight: 100 900; font-stretch: 50% 125%; }
+    html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+    #aviso {
+      position: absolute;
+      inset: 8px;
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 18px;
+      border: 1px solid rgba(139, 233, 255, 0.4);
+      border-radius: 14px;
+      background: rgba(2, 9, 14, 0.86);
+      color: #EAF8FF;
+      font: 15px/1.4 "Saira", system-ui, sans-serif;
+      font-stretch: 92%;
+      opacity: 0;
+      translate: 0 -8px;
+      transition: opacity 220ms ease-out, translate 220ms ease-out;
+    }
+    #aviso.visivel { opacity: 1; translate: 0 0; }
+    .anel {
+      width: 30px; height: 30px; border-radius: 50%;
+      border: 1.5px solid #8BE9FF;
+      box-shadow: 0 0 14px rgba(139, 233, 255, 0.5), inset 0 0 10px rgba(139, 233, 255, 0.35);
+    }
+    .nome { display: block; font-family: "Michroma", sans-serif; font-size: 11px; letter-spacing: 0.14em; color: #8BE9FF; }
+    #texto {
+      display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (prefers-reduced-motion: reduce) { #aviso { transition: none; translate: 0 0; } }
+  </style>
+</head>
+<body>
+  <div id="aviso" role="status" aria-live="polite">
+    <span class="anel" aria-hidden="true"></span>
+    <p><span class="nome">Jarvis</span><span id="texto"></span></p>
+  </div>
+  <script>
+    "use strict";
+    // Mostra por alguns segundos a última fala do Jarvis enquanto a janela principal está fechada.
+    const ponte = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.jarvis;
+    const caixa = document.getElementById("aviso");
+    let esconder = null;
+    function mostrar(texto) {
+      document.getElementById("texto").textContent = texto;
+      if (ponte) ponte.postMessage("mostrar_aviso");
+      requestAnimationFrame(() => caixa.classList.add("visivel"));
+      clearTimeout(esconder);
+      esconder = setTimeout(() => {
+        caixa.classList.remove("visivel");
+        setTimeout(() => { if (ponte) ponte.postMessage("esconder_aviso"); }, 260);
+      }, 6000);
+    }
+    new EventSource("/api/eventos").onmessage = (m) => {
+      try {
+        const evento = JSON.parse(m.data);
+        if (evento.tipo === "aviso") mostrar(evento.texto);
+      } catch (_) { /* evento malformado: ignora */ }
+    };
+  </script>
+</body>
+</html>

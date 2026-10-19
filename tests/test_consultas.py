@@ -63,3 +63,8 @@ def test_descrever_clima():
     t = descrever_clima(carregar("open_meteo.json"))
     assert t.startswith("São Paulo agora: 21 °C (sensação 23 °C), parcialmente nublado.")
     assert "mínima 14 °C, máxima 23 °C, chance de chuva 12%" in t
+
+
+def test_clima_curto():
+    from jarvis.consultas import clima_curto
+    assert clima_curto(carregar("open_meteo.json")) == "21 °C, parcialmente nublado em São Paulo"

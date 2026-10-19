@@ -24,36 +24,51 @@ sys.path.insert(0, str(RAIZ))
 from jarvis.config import dados  # noqa: E402
 
 URL_PADRAO = "http://127.0.0.1:8766/"
+LARGURA_AVISO, ALTURA_AVISO = 460, 112
+
+
+def _janela_transparente(janela: Gtk.Window) -> None:
+    janela.set_decorated(False)
+    janela.set_keep_above(True)
+    janela.set_skip_taskbar_hint(True)
+    janela.set_skip_pager_hint(True)
+    visual = janela.get_screen().get_rgba_visual()
+    if visual is not None:
+        janela.set_visual(visual)
+    janela.set_app_paintable(True)
+
+
+def _webview(ao_mensagem) -> WebKit2.WebView:
+    conteudo = WebKit2.UserContentManager()
+    conteudo.register_script_message_handler("jarvis")
+    conteudo.connect("script-message-received::jarvis", ao_mensagem)
+    web = WebKit2.WebView.new_with_user_content_manager(conteudo)
+    web.set_background_color(Gdk.RGBA(0, 0, 0, 0))
+    return web
+
+
+def _texto(resultado) -> str:
+    return resultado.get_js_value().to_string() if hasattr(resultado, "get_js_value") else resultado.to_string()
 
 
 class JanelaJarvis:
-    def __init__(self, url: str):
+    def __init__(self, url: str, com_aviso: bool = True):
         self.janela = Gtk.Window(title="Jarvis")
-        self.janela.set_decorated(False)
-        self.janela.set_keep_above(True)
-        self.janela.set_skip_taskbar_hint(True)
-        self.janela.set_skip_pager_hint(True)
+        _janela_transparente(self.janela)
         self.janela.set_type_hint(Gdk.WindowTypeHint.NORMAL)
-        visual = self.janela.get_screen().get_rgba_visual()
-        if visual is not None:
-            self.janela.set_visual(visual)
-        self.janela.set_app_paintable(True)
         self.janela.connect("delete-event", self._ao_fechar)
-
-        conteudo = WebKit2.UserContentManager()
-        conteudo.register_script_message_handler("jarvis")
-        conteudo.connect("script-message-received::jarvis", self._ao_mensagem)
-        self.web = WebKit2.WebView.new_with_user_content_manager(conteudo)
-        self.web.set_background_color(Gdk.RGBA(0, 0, 0, 0))
-        self.web.get_settings().set_enable_developer_extras(False)
+        self.web = _webview(self._ao_mensagem)
         self.janela.add(self.web)
         self.web.load_uri(url)
         self.web.show()
+        self.aviso = self._criar_aviso(url) if com_aviso else None
 
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1, self.mostrar)
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, self._sair)
 
     def mostrar(self, *_args) -> bool:
+        if self.aviso is not None:
+            self.aviso.hide()
         self.janela.fullscreen()
         self.janela.show()
         self.janela.present_with_time(Gtk.get_current_event_time() or 0)
@@ -64,10 +79,32 @@ class JanelaJarvis:
     def esconder(self) -> None:
         self.janela.hide()
 
+    def _criar_aviso(self, url: str) -> Gtk.Window:
+        """Faixa no canto da tela com a última fala, só quando a janela principal está fechada; nunca pega foco."""
+        aviso = Gtk.Window(title="Jarvis — aviso")
+        _janela_transparente(aviso)
+        aviso.set_accept_focus(False)
+        aviso.set_focus_on_map(False)
+        aviso.set_type_hint(Gdk.WindowTypeHint.NOTIFICATION)
+        aviso.set_default_size(LARGURA_AVISO, ALTURA_AVISO)
+        tela = aviso.get_screen()
+        aviso.move(tela.get_width() - LARGURA_AVISO - 24, 24)
+        web = _webview(self._ao_mensagem_aviso)
+        aviso.add(web)
+        web.load_uri(url.split("?", 1)[0].rstrip("/") + "/aviso.html")
+        web.show()
+        return aviso
+
     def _ao_mensagem(self, _gerente, resultado) -> None:
-        valor = resultado.get_js_value().to_string() if hasattr(resultado, "get_js_value") else resultado.to_string()
-        if valor == "fechar":
+        if _texto(resultado) == "fechar":
             self.esconder()
+
+    def _ao_mensagem_aviso(self, _gerente, resultado) -> None:
+        valor = _texto(resultado)
+        if valor == "mostrar_aviso" and not self.janela.get_visible():
+            self.aviso.show()
+        elif valor == "esconder_aviso":
+            self.aviso.hide()
 
     def _ao_fechar(self, *_args) -> bool:
         self.esconder()
@@ -85,7 +122,7 @@ def main() -> None:
     args = parser.parse_args()
 
     (dados() / "hud.pid").write_text(str(os.getpid()))
-    janela = JanelaJarvis(args.url)
+    janela = JanelaJarvis(args.url, com_aviso=args.url.startswith("http"))
     if args.mostrar:
         GLib.timeout_add(400, lambda: janela.mostrar() and False)
     Gtk.main()

@@ -13,7 +13,7 @@
     ouvindo: "Ouvindo",
     pensando: "Pensando",
     falando: "Falando",
-    desconectado: "Desconectado",
+    desconectado: "Jarvis desconectado. Tentando de novo…",
   };
   const ROTULO_SESSAO = {
     working: "trabalhando",
@@ -119,8 +119,14 @@
     lista.replaceChildren();
     const linhas = [`<ellipse cx="50%" cy="50%" rx="${rx}" ry="${ry}"/>`];
 
+    // Distribui em leque a partir do topo, deixando livre a faixa de baixo (onde fica o estado do núcleo);
+    // os primeiros da lista (quem precisa do senhor) ficam nas posições mais altas.
+    const n = ordenadas.length;
+    const passo = n > 1 ? Math.min((2 * Math.PI) / n, (310 * Math.PI) / 180 / (n - 1)) : 0;
+    const angulos = ordenadas.map((_, i) => -Math.PI / 2 + (i - (n - 1) / 2) * passo)
+      .sort((a, b) => Math.sin(a) - Math.sin(b));
     ordenadas.forEach((s, i) => {
-      const angulo = -Math.PI / 2 + (i * 2 * Math.PI) / Math.max(ordenadas.length, 1);
+      const angulo = angulos[i];
       const x = Math.round(rx * Math.cos(angulo));
       const y = Math.round(ry * Math.sin(angulo));
       const atencao = PRECISA_DO_SENHOR.has(s.estado);
@@ -225,6 +231,7 @@
 
   function fechar() {
     document.body.classList.remove("aberto");
+    if (!DEMO) enviarAoCerebro("/api/fechar", {});
     const ponte = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.jarvis;
     if (ponte) ponte.postMessage("fechar");
   }
@@ -254,6 +261,26 @@
 
   atualizarRelogio();
   setInterval(atualizarRelogio, 15000);
+
+  // ---------- conexão com o cérebro ----------
+
+  function conectar() {
+    const fonte = new EventSource("/api/eventos");
+    let espera = null;
+    fonte.onopen = () => {
+      clearTimeout(espera);
+      if (document.body.dataset.estado === "desconectado") definirEstado("ocioso");
+    };
+    fonte.onmessage = (mensagem) => {
+      clearTimeout(espera);
+      try { aplicar(JSON.parse(mensagem.data)); } catch (_) { /* evento malformado: ignora */ }
+    };
+    // EventSource reconecta sozinho; se a queda durar mais de 2 s, avisa na tela.
+    fonte.onerror = () => {
+      clearTimeout(espera);
+      espera = setTimeout(() => definirEstado("desconectado"), 2000);
+    };
+  }
 
   // ---------- demonstração ----------
 
@@ -319,7 +346,10 @@
 
   if (DEMO) {
     if (parametros.has("fundo")) document.documentElement.classList.add("fundo-teste");
+    if (parametros.has("sessoes")) SESSOES_DEMO.splice(Number(parametros.get("sessoes")));
     if (parametros.has("quadro")) demoQuadroFinal(); else demoAoVivo();
     abrir();
+  } else {
+    conectar();
   }
 })();

@@ -269,8 +269,7 @@ class Cerebro:
     def _atualizar_sistema(self) -> None:
         voz_ok = self._chamar_voz("/saude") is not None
         try:
-            clima = consultas.descrever_clima(consultas.buscar_clima(timeout=5))
-            clima = clima.split(", ")[0].replace("São Paulo agora: ", "") + " em São Paulo"
+            clima = consultas.clima_curto(consultas.buscar_clima(timeout=5))
         except Exception:
             clima = self._sistema.get("clima", "")
         novo = {**self._sistema, "voz": voz_ok, "clima": clima}
