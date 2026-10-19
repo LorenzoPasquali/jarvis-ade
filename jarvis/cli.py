@@ -143,6 +143,12 @@ def _instalar(_: argparse.Namespace) -> int:
     return lancador.instalar()
 
 
+def _hud(args: argparse.Namespace) -> int:
+    from jarvis import hud_cli
+
+    return hud_cli.hud(demo=args.demo)
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="jarvis", description="Jarvis: orquestrador das sessões do Orca.")
     subs = parser.add_subparsers(dest="comando")
@@ -153,6 +159,8 @@ def _parser() -> argparse.ArgumentParser:
         return p
 
     sub("iniciar", "abre a sessão do Jarvis neste terminal do Orca (padrão)", _iniciar)
+    sub("hud", "abre a janela do Jarvis e começa a ouvir (Super+J)", _hud).add_argument(
+        "--demo", action="store_true", help="dados de exemplo, sem o cérebro")
     sub("status", "estado das sessões de agentes no Orca", _status).add_argument("--json", action="store_true")
     p = sub("eventos", "eventos registrados pelo vigia", _eventos)
     modo = p.add_mutually_exclusive_group()

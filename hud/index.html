@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jarvis</title>
+  <link rel="stylesheet" href="estilo.css">
+</head>
+<body data-estado="ocioso">
+  <div id="veu" aria-hidden="true"></div>
+
+  <header id="sistema">
+    <p class="marca">Jarvis</p>
+    <div class="painel-sistema">
+      <time id="hora" class="hora">--:--</time>
+      <p id="data" class="data"></p>
+      <p id="clima" class="clima"></p>
+      <ul class="servicos" aria-label="Estado dos serviços">
+        <li id="servico-voz" data-ok="true">Voz</li>
+        <li id="servico-orca" data-ok="true">Orca</li>
+      </ul>
+    </div>
+  </header>
+
+  <main class="palco">
+    <section id="orbita" aria-label="Sessões dos agentes">
+      <svg id="ligacoes" aria-hidden="true"></svg>
+      <svg id="nucleo" viewBox="-160 -160 320 320" role="img" aria-label="Núcleo do Jarvis">
+        <defs>
+          <radialGradient id="brilho" r="0.5">
+            <stop offset="0" stop-color="#8BE9FF" stop-opacity=".55"/>
+            <stop offset=".55" stop-color="#8BE9FF" stop-opacity=".12"/>
+            <stop offset="1" stop-color="#8BE9FF" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <circle class="marcas" r="150"/>
+        <circle class="marcas-maiores" r="150"/>
+        <circle class="anel-fino" r="138"/>
+        <g class="arcos"><circle class="arco a1" r="124"/><circle class="arco a2" r="124"/></g>
+        <circle class="segmentos" r="106"/>
+        <g class="ondas"><circle r="72"/><circle r="72"/><circle r="72"/></g>
+        <circle class="respiro" r="88"/>
+        <circle class="nucleo-luz" r="78"/>
+        <circle class="nucleo-borda" r="62"/>
+        <circle class="nucleo-ponto" r="5"/>
+      </svg>
+      <p id="estado" class="estado" aria-live="polite">Pronto</p>
+      <ul id="sessoes"></ul>
+    </section>
+
+    <section id="conversa" aria-live="polite" aria-label="Conversa com o Jarvis"></section>
+    <section id="cartoes" aria-label="Confirmações"></section>
+
+    <form id="entrada" autocomplete="off">
+      <span class="microfone" aria-hidden="true"></span>
+      <label class="invisivel" for="texto">Mensagem para o Jarvis</label>
+      <input id="texto" name="texto" placeholder="Fale ou digite para o Jarvis">
+      <button type="submit">Enviar</button>
+    </form>
+    <p class="dica">Super+J para falar. Esc para fechar.</p>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
