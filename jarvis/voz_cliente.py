@@ -18,8 +18,9 @@ from jarvis.config import VOZ_URL, dados
 from jarvis.orca import OrcaErro
 from jarvis.texto_fala import extrair_fala
 
-_ALUCINACOES = ["legendas pela comunidade amara.org", "obrigado", "obrigada", "obrigado por assistir",
-                "tchau", "inscreva-se no canal"]
+_ALUCINACOES = ["obrigado", "obrigada", "obrigado por assistir", "tchau", "tchau tchau", "inscreva-se no canal"]
+# Créditos de legenda que o Whisper inventa em silêncio ("Legendas pela comunidade Amara.org", "Legenda por …").
+_CREDITOS_LEGENDA = re.compile(r"^legendas? (por|pela|pelo)\b|amaraorg")
 _DURACAO_MINIMA = 0.5
 _INTERVALO_AVISO_VOZ = 600
 
@@ -75,7 +76,7 @@ def transcricao_util(texto: str, duracao_s: float) -> str | None:
     normalizado = _normalizar(texto)
     if duracao_s < _DURACAO_MINIMA or not normalizado:
         return None
-    if normalizado in {_normalizar(a) for a in _ALUCINACOES}:
+    if normalizado in {_normalizar(a) for a in _ALUCINACOES} or _CREDITOS_LEGENDA.search(normalizado):
         return None
     return texto
 

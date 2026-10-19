@@ -61,6 +61,9 @@ def test_hook_fala_nunca_levanta(dados_tmp):
 
 @pytest.mark.parametrize("texto,dur,esperado", [
     ("Legendas pela comunidade Amara.org", 3.0, None),
+    ("Legenda por Sônia Ruberti", 3.0, None),
+    ("Legendas pela comunidade Amara.org. Obrigado.", 3.0, None),
+    ("Tchau, tchau.", 2.0, None),
     ("Obrigado.", 2.0, None),
     ("...", 2.0, None),
     ("", 2.0, None),
