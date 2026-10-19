@@ -130,3 +130,52 @@ def test_sem_audio_algum_termina_vazio():
     d = DetectorSilencio()
     resultados = [d.alimentar(None, i * 0.1) for i in range(62)]
     assert resultados[-1] == "vazio" or "vazio" in resultados
+
+
+def test_gravador_morre_junto_com_o_cerebro(tmp_path):
+    import os
+    import signal
+    import subprocess
+    import sys
+    import time
+
+    from conftest import RAIZ
+    script = (
+        "import sys, time; sys.path.insert(0, %r)\n"
+        "from jarvis.cerebro.escuta import Escuta\n"
+        "e = Escuta(lambda n: None, lambda t: None, chamar=lambda *a, **k: {}, comando=['sleep', '30'])\n"
+        "e.iniciar(); print(e._proc.pid, flush=True); time.sleep(30)\n" % str(RAIZ))
+    pai = subprocess.Popen([sys.executable, "-c", script], stdout=subprocess.PIPE, text=True,
+                           env={**os.environ, "JARVIS_DADOS": str(tmp_path)})
+    gravador = int(pai.stdout.readline())
+    pai.send_signal(signal.SIGKILL)
+    pai.wait()
+    for _ in range(50):
+        if not os.path.exists(f"/proc/{gravador}") or "Z" in open(f"/proc/{gravador}/stat").read().split()[2]:
+            break
+        time.sleep(0.05)
+    else:
+        os.kill(gravador, signal.SIGKILL)
+        raise AssertionError("gravador sobreviveu ao pai")
+
+
+def test_iniciar_duas_vezes_ao_mesmo_tempo_cria_um_gravador(tmp_path, monkeypatch):
+    import threading
+
+    from jarvis.cerebro import escuta as escuta_mod
+    monkeypatch.setenv("JARVIS_DADOS", str(tmp_path))
+    criados = []
+    original = escuta_mod.subprocess.Popen
+
+    def popen(*a, **k):
+        criados.append(a)
+        return original(["sleep", "5"], **{c: v for c, v in k.items() if c != "preexec_fn"})
+
+    monkeypatch.setattr(escuta_mod.subprocess, "Popen", popen)
+    lento = lambda *a, **k: __import__("time").sleep(0.05) or {}
+    e = escuta_mod.Escuta(lambda n: None, lambda t: None, chamar=lento, comando=["sleep", "5"])
+    threads = [threading.Thread(target=e.iniciar) for _ in range(4)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    e.encerrar()
+    assert len(criados) == 1

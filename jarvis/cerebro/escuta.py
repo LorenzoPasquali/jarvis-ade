@@ -1,6 +1,7 @@
 """Escuta do microfone para a janela: nível em tempo real, fim por silêncio e transcrição no servidor de voz."""
 
 import array
+import ctypes
 import math
 import signal
 import subprocess
@@ -57,6 +58,12 @@ class DetectorSilencio:
         return None
 
 
+def _morrer_com_o_pai() -> None:
+    """No processo do gravador: se o cérebro morrer, o kernel encerra o gravador junto (sem órfãos gravando)."""
+    PR_SET_PDEATHSIG = 1
+    ctypes.CDLL("libc.so.6", use_errno=True).prctl(PR_SET_PDEATHSIG, signal.SIGTERM)
+
+
 def _inicio_dados(cabecalho: bytes) -> int | None:
     posicao = cabecalho.find(b"data")
     return None if posicao < 0 else posicao + 8
@@ -69,12 +76,14 @@ class Escuta:
         self._comando = comando
         self._proc: subprocess.Popen | None = None
         self._encerrar = threading.Event()
+        self._trava = threading.Lock()
         self.ativa = False
 
     def iniciar(self) -> None:
-        if self.ativa:
-            return
-        self.ativa = True
+        with self._trava:
+            if self.ativa:
+                return
+            self.ativa = True
         self._encerrar.clear()
         self._chamar("/parar")
         self._chamar("/ouvindo", {"ligado": True})
@@ -82,13 +91,31 @@ class Escuta:
         arquivo.unlink(missing_ok=True)
         comando = self._comando or ["pw-record", "--rate", str(TAXA), "--channels", "1", "--format", "s16",
                                     str(arquivo)]
-        self._proc = subprocess.Popen(comando, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            self._proc = subprocess.Popen(comando, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                          preexec_fn=_morrer_com_o_pai)
+        except OSError:
+            self._chamar("/ouvindo", {"ligado": False})
+            self.ativa = False
+            self._ao_fim(None)
+            return
         threading.Thread(target=self._acompanhar, args=(arquivo,), daemon=True).start()
 
     def encerrar(self) -> None:
         self._encerrar.set()
 
     def _acompanhar(self, arquivo) -> None:
+        texto = None
+        try:
+            texto = self._ouvir(arquivo)
+        finally:
+            # Sempre libera a voz (pausada enquanto ouvia) e encerra, mesmo se algo falhou.
+            self._parar_gravacao()
+            self._chamar("/ouvindo", {"ligado": False})
+            self.ativa = False
+            self._ao_fim(texto)
+
+    def _ouvir(self, arquivo) -> str | None:
         detector = DetectorSilencio()
         inicio = time.time()
         offset = None
@@ -114,19 +141,12 @@ class Escuta:
                 nivel = rms(novo)
                 self._ao_nivel(nivel)
             resultado = detector.alimentar(nivel, time.time() - inicio)
-        texto = None
-        try:
-            self._parar_gravacao()
-            if resultado == "fim" and offset is not None and arquivo.exists():
-                duracao = max(0, arquivo.stat().st_size - offset) / BYTES_POR_SEGUNDO
-                resposta = self._chamar("/transcrever", {"caminho": str(arquivo)}, timeout=30.0)
-                if resposta:
-                    texto = transcricao_util(resposta.get("texto", ""), duracao)
-        finally:
-            # Sempre libera a voz (pausada enquanto ouvia) e encerra, mesmo se a gravação falhou.
-            self._chamar("/ouvindo", {"ligado": False})
-            self.ativa = False
-            self._ao_fim(texto)
+        self._parar_gravacao()
+        if resultado != "fim" or offset is None or not arquivo.exists():
+            return None
+        duracao = max(0, arquivo.stat().st_size - offset) / BYTES_POR_SEGUNDO
+        resposta = self._chamar("/transcrever", {"caminho": str(arquivo)}, timeout=30.0)
+        return transcricao_util(resposta.get("texto", ""), duracao) if resposta else None
 
     def _parar_gravacao(self) -> None:
         if self._proc and self._proc.poll() is None:
