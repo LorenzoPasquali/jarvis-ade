@@ -31,10 +31,28 @@ def test_settings_desligam_plugins_que_mudam_o_tom():
 
 def test_persona_tem_regras_chave():
     p = (RAIZ / "sessao/CLAUDE.md").read_text()
-    for trecho in ["🔊", "[voz]", "--confirmado", "jarvis eventos --seguir", "jarvis eventos --pendentes",
-                   "regras.md", "senhor", "geopolítica", "jarvis clima", "orca search", "jarvis calar",
-                   "[sistema] Sessão do Jarvis iniciada.", "🔇", "--tecla"]:
+    for trecho in ["🔊", "🔇", "[voz]", "[eventos]", "[sistema]", "jarvis confirmar", "jarvis lancar",
+                   "jarvis regra adicionar", "--origem voz", "--tecla", "regras.md", "senhor", "geopolítica",
+                   "jarvis clima", "orca search", "jarvis calar"]:
         assert trecho in p, trecho
+    for antigo in ["Monitor", "--confirmado", "jarvis eventos --seguir"]:
+        assert antigo not in p, antigo
+
+
+def cerebro_settings() -> dict:
+    return json.loads((RAIZ / "sessao/cerebro-settings.json").read_text())
+
+
+def test_cerebro_settings():
+    s = cerebro_settings()
+    perm = s["permissions"]
+    for regra in ["Bash(jarvis lancar:*)", "Bash(jarvis confirmar:*)", "Bash(jarvis regra:*)", "Bash(jarvis enviar:*)",
+                  "WebSearch", "mcp__jarvis__permissao"]:
+        assert regra in perm["allow"], regra
+    for regra in ["Bash(orca terminal send:*)", "Bash(orca agent launch:*)", "Edit", "Write", "Read(//git/**/.env)"]:
+        assert regra in perm["deny"], regra
+    assert "hooks" not in s and "Monitor" not in perm["allow"]
+    assert s["enabledPlugins"]["caveman@caveman"] is False
 
 
 def test_regras_existe_sem_regra_ativa():

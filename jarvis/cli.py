@@ -232,6 +232,12 @@ def _permissao_mcp(_: argparse.Namespace) -> int:
     return 0
 
 
+def _cerebro(_: argparse.Namespace) -> int:
+    from jarvis.cerebro import main as cerebro_main
+
+    return cerebro_main.main()
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="jarvis", description="Jarvis: orquestrador das sessões do Orca.")
     subs = parser.add_subparsers(dest="comando")
@@ -242,6 +248,7 @@ def _parser() -> argparse.ArgumentParser:
         return p
 
     sub("iniciar", "abre a sessão do Jarvis neste terminal do Orca (padrão)", _iniciar)
+    sub("cerebro", "o Jarvis sempre ligado: Claude headless, voz e servidor da janela", _cerebro)
     sub("hud", "abre a janela do Jarvis e começa a ouvir (Super+J)", _hud).add_argument(
         "--demo", action="store_true", help="dados de exemplo, sem o cérebro")
     sub("status", "estado das sessões de agentes no Orca", _status).add_argument("--json", action="store_true")

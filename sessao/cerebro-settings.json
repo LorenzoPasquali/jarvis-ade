@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(jarvis status:*)",
+      "Bash(jarvis historico:*)",
+      "Bash(jarvis clima:*)",
+      "Bash(jarvis enviar:*)",
+      "Bash(jarvis lancar:*)",
+      "Bash(jarvis regra:*)",
+      "Bash(jarvis confirmar:*)",
+      "Bash(jarvis recusar:*)",
+      "Bash(jarvis pendencias:*)",
+      "Bash(jarvis calar:*)",
+      "Bash(jarvis mudo:*)",
+      "Bash(orca worktree ps:*)",
+      "Bash(orca terminal read:*)",
+      "Bash(orca terminal list:*)",
+      "Bash(orca terminal show:*)",
+      "Bash(orca search:*)",
+      "Bash(orca repo list:*)",
+      "WebSearch",
+      "mcp__jarvis__permissao"
+    ],
+    "deny": [
+      "Bash(orca terminal send:*)",
+      "Bash(orca agent launch:*)",
+      "Edit",
+      "Write",
+      "Read(//git/**/.env)",
+      "Read(//git/**/.env.*)",
+      "Read(//git/**/*.pem)",
+      "Read(//git/**/*.key)",
+      "Read(~/.ssh/**)"
+    ],
+    "additionalDirectories": ["/git"]
+  },
+  "enabledPlugins": {
+    "caveman@caveman": false,
+    "superpowers@claude-plugins-official": false
+  }
+}
