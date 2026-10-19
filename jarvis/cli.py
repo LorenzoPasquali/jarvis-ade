@@ -102,6 +102,35 @@ def _enviar(args: argparse.Namespace) -> int:
     return 0
 
 
+def _hook_fala(_: argparse.Namespace) -> int:
+    from jarvis import voz_cliente
+
+    voz_cliente.hook_fala(sys.stdin.read())
+    return 0
+
+
+def _ouvir(_: argparse.Namespace) -> int:
+    from jarvis import voz_cliente
+
+    print(voz_cliente.ouvir(voz_cliente.GravadorPw()))
+    return 0
+
+
+def _calar(_: argparse.Namespace) -> int:
+    from jarvis import voz_cliente
+
+    voz_cliente.calar()
+    return 0
+
+
+def _mudo(args: argparse.Namespace) -> int:
+    from jarvis import voz_cliente
+
+    voz_cliente.mudo(args.estado == "on")
+    print("Modo mudo ligado." if args.estado == "on" else "Modo mudo desligado.")
+    return 0
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="jarvis", description="Jarvis: orquestrador das sessões do Orca.")
     subs = parser.add_subparsers(dest="comando")
@@ -131,10 +160,10 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--motivo", default="", help="ordem do usuário ou regra aplicada")
     p.add_argument("--confirmado", action="store_true", help="o usuário confirmou a ordem falada")
     sub("vigia", "loop que registra mudanças das sessões", _vigia)
-    sub("hook-fala", "hook Stop: fala a resposta do Jarvis")
-    sub("ouvir", "aperta-e-fala: começa ou termina a gravação")
-    sub("calar", "interrompe a fala")
-    sub("mudo", "liga ou desliga o modo mudo")
+    sub("hook-fala", "hook Stop: fala a resposta do Jarvis", _hook_fala)
+    sub("ouvir", "aperta-e-fala: começa ou termina a gravação", _ouvir)
+    sub("calar", "interrompe a fala", _calar)
+    sub("mudo", "liga ou desliga o modo mudo", _mudo).add_argument("estado", choices=["on", "off"])
     sub("instalar", "instala serviços, atalhos e o comando jarvis")
     return parser
 
