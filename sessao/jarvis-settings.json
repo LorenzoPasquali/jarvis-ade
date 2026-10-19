@@ -15,14 +15,22 @@
       "Bash(orca search:*)",
       "Bash(orca repo list:*)",
       "WebSearch",
-      "WebFetch",
-      "Monitor",
+      "Monitor"
+    ],
+    "ask": [
       "Edit(//git/jarvis/sessao/regras.md)"
     ],
     "deny": [
-      "Bash(orca terminal send:*)"
+      "Bash(orca terminal send:*)",
+      "Read(//git/**/.env)",
+      "Read(//git/**/.env.*)",
+      "Read(//git/**/*.pem)",
+      "Read(//git/**/*.key)",
+      "Read(~/.ssh/**)"
     ],
-    "additionalDirectories": ["/git"]
+    "additionalDirectories": [
+      "/git"
+    ]
   },
   "enabledPlugins": {
     "caveman@caveman": false,
@@ -32,7 +40,11 @@
     "Stop": [
       {
         "hooks": [
-          {"type": "command", "command": "/git/jarvis/bin/jarvis hook-fala", "timeout": 10}
+          {
+            "type": "command",
+            "command": "/git/jarvis/bin/jarvis hook-fala",
+            "timeout": 10
+          }
         ]
       }
     ]

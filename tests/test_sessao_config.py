@@ -33,7 +33,7 @@ def test_persona_tem_regras_chave():
     p = (RAIZ / "sessao/CLAUDE.md").read_text()
     for trecho in ["🔊", "[voz]", "--confirmado", "jarvis eventos --seguir", "jarvis eventos --pendentes",
                    "regras.md", "senhor", "geopolítica", "jarvis clima", "orca search", "jarvis calar",
-                   "[sistema] Sessão do Jarvis iniciada."]:
+                   "[sistema] Sessão do Jarvis iniciada.", "🔇", "--tecla"]:
         assert trecho in p, trecho
 
 
@@ -70,3 +70,12 @@ def test_iniciar_registra_e_executa_claude(dados_tmp, monkeypatch):
 def test_unidades_systemd():
     vigia = (RAIZ / "systemd/jarvis-vigia.service").read_text()
     assert "ExecStart=/usr/bin/python3 /git/jarvis/bin/jarvis vigia" in vigia and "Restart=always" in vigia
+
+
+def test_permissoes_contra_injecao():
+    perm = settings()["permissions"]
+    assert "WebFetch" not in perm["allow"] and "WebSearch" in perm["allow"]
+    assert "Edit(//git/jarvis/sessao/regras.md)" in perm["ask"]
+    assert not [r for r in perm["allow"] if r.startswith("Edit(")]
+    for segredo in ["Read(//git/**/.env)", "Read(//git/**/.env.*)", "Read(~/.ssh/**)"]:
+        assert segredo in perm["deny"]

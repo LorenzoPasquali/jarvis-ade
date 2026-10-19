@@ -98,9 +98,10 @@ def servidor_falso():
     srv.shutdown()
 
 
-def post(base, rota, corpo):
+def post(base, rota, corpo, headers=None):
     dados = corpo if isinstance(corpo, bytes) else json.dumps(corpo).encode()
-    req = urllib.request.Request(base + rota, data=dados, method="POST", headers={"Content-Type": "application/json"})
+    req = urllib.request.Request(base + rota, data=dados, method="POST",
+                                 headers=headers or {"Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=3) as r:
             return r.status, json.loads(r.read() or b"{}")
@@ -118,3 +119,9 @@ def test_http_rotas(servidor_falso):
     assert post(servidor_falso, "/ouvindo", {"ligado": False})[0] == 200
     assert post(servidor_falso, "/falar", b"nao-json")[0] == 400
     assert post(servidor_falso, "/inexistente", {})[0] == 404
+
+
+def test_recusa_pedidos_vindos_de_paginas_web(servidor_falso):
+    assert post(servidor_falso, "/falar", {"texto": "x"},
+                {"Content-Type": "application/json", "Origin": "https://exemplo.com"})[0] == 403
+    assert post(servidor_falso, "/falar", b'{"texto": "x"}', {"Content-Type": "text/plain"})[0] == 415

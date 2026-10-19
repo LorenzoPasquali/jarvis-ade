@@ -175,6 +175,13 @@ def criar_servidor(locutor: Locutor, transcritor, porta: int) -> ThreadingHTTPSe
                 self._responder(404, {"erro": "rota desconhecida"})
 
         def do_POST(self):
+            # Só clientes locais (hook, aperta-e-fala); páginas web mandam Origin.
+            if self.headers.get("Origin"):
+                self._responder(403, {"erro": "origem não permitida"})
+                return
+            if (self.headers.get("Content-Type") or "").split(";")[0].strip() != "application/json":
+                self._responder(415, {"erro": "use application/json"})
+                return
             tamanho = int(self.headers.get("Content-Length") or 0)
             try:
                 corpo = json.loads(self.rfile.read(tamanho) or b"{}")
