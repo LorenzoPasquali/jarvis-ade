@@ -1,6 +1,7 @@
 """Log de eventos do vigia (`dados/eventos.jsonl`) e leitura com cursor."""
 
 import json
+import re
 import time
 from collections.abc import Iterator
 
@@ -29,13 +30,6 @@ def _cursor():
 def anexar(evento: dict) -> None:
     with _log().open("a", encoding="utf-8") as f:
         f.write(json.dumps(evento, ensure_ascii=False) + "\n")
-
-
-def _tamanho() -> int:
-    try:
-        return _log().stat().st_size
-    except FileNotFoundError:
-        return 0
 
 
 def ler_desde(offset: int) -> tuple[list[dict], int]:
@@ -72,7 +66,7 @@ def formatar(evento: dict) -> str:
     worktree = evento.get("worktree") or ""
     alvo = projeto if worktree in ("", projeto) else f"{projeto} ({worktree})"
     linha = f"[evento] {alvo}: {descricao}"
-    resumo = " ".join((evento.get("resumo") or "").split())
+    resumo = " ".join(re.sub(r"[«»\x00-\x1f\x7f]", " ", evento.get("resumo") or "").split())
     return f"{linha} — «{resumo}»" if resumo else linha
 
 
@@ -87,16 +81,24 @@ def pendentes(maximo: int = 30) -> str:
     return "\n".join(linhas)
 
 
-def seguir(intervalo: float = 0.5) -> Iterator[str]:
-    """Começa no fim do log (já ao ser chamada) e rende cada evento novo."""
-    offset = _tamanho()
+def seguir(intervalo: float = 0.5, atraso_maximo: int = 10) -> Iterator[str]:
+    """Começa no cursor (o que `pendentes` ainda não mostrou) e rende cada evento novo.
+
+    Ao rearmar o monitor nada se perde; um atraso grande vira uma linha de resumo.
+    """
+    offset = _ler_cursor()
 
     def gerar() -> Iterator[str]:
         nonlocal offset
+        primeira = True
         while True:
             lidos, novo = ler_desde(offset)
+            _gravar_cursor(novo)
+            if primeira and len(lidos) > atraso_maximo:
+                yield f"[evento] … e mais {len(lidos) - atraso_maximo} eventos anteriores (veja jarvis historico)"
+                lidos = lidos[-atraso_maximo:]
+            primeira = False
             for e in lidos:
-                _gravar_cursor(novo)
                 yield formatar(e)
             offset = novo
             if not lidos:
