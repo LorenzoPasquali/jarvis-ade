@@ -18,6 +18,8 @@ from jarvis.cerebro.fala import SeparadorFala
 from jarvis.config import RAIZ, dados
 
 ESPERA_PERMISSAO_S = 120
+TRAVADO_S = 300  # turno sem nenhuma saída do Claude por tanto tempo: considera travado e reinicia
+PAUSA_APOS_ERRO_S = 600
 MAX_HISTORICO = 50
 INTERVALO_SISTEMA_S = 60
 
@@ -53,6 +55,8 @@ class Cerebro:
         self._ultimo_sistema = 0.0
         self._estado = "ocioso"
         self._pendencia_no_turno = False
+        self._ultima_saida = time.time()
+        self._eventos_pausados_ate = 0.0
         self.janela_aberta = False
         self.escuta = escuta_mod.Escuta(ao_nivel=self._ao_nivel, ao_fim=self._ao_fim_escuta)
 
@@ -128,6 +132,7 @@ class Cerebro:
 
     def _enviar_claude(self, texto: str, tipo: str) -> None:
         turno.registrar(tipo)
+        self._ultima_saida = time.time()
         self._resposta = ""
         self._pendencia_no_turno = False
         self._separador.reiniciar()
@@ -166,6 +171,7 @@ class Cerebro:
 
     def ao_evento_claude(self, evento: dict) -> None:
         tipo = evento.get("type")
+        self._ultima_saida = time.time()
         if tipo == "stream_event":
             interno = evento.get("event") or {}
             if interno.get("type") == "message_start" and self._resposta and not self._resposta.endswith("\n"):
@@ -178,11 +184,14 @@ class Cerebro:
                 self._fim_do_turno(evento)
         elif tipo == "jarvis_reiniciando":
             self._definir_estado("desconectado")
-        elif tipo == "system" and evento.get("subtype") == "init" and self._estado == "desconectado":
+        elif tipo in ("system", "jarvis_pronto") and self._estado == "desconectado":
             self._definir_estado("ocioso")
 
     def _fim_do_turno(self, evento: dict) -> None:
         turno.encerrar()
+        if evento.get("is_error"):
+            self._erro_do_claude(evento)
+            return
         texto = evento.get("result") or self._resposta
         self._separador.fim(texto)
         if texto.strip():
@@ -192,6 +201,23 @@ class Cerebro:
             self._definir_estado("ocioso")
         if self._pendencia_no_turno and self.janela_aberta:
             threading.Thread(target=self._reabrir_escuta, daemon=True).start()
+
+    def _erro_do_claude(self, evento: dict) -> None:
+        """Erros do Claude (queda, limite de uso) viram uma frase curta em português — nunca lidos crus."""
+        print(f"cérebro: erro do Claude: {evento.get('subtype')} {str(evento.get('result'))[:300]!r}", flush=True)
+        self._separador.reiniciar()
+        if evento.get("subtype") == "error_restart":
+            texto, fala = ("Perdi a conexão com o Claude no meio da resposta, senhor. Pode repetir, por favor?",
+                           "Perdi a conexão, senhor. Pode repetir?")
+        else:
+            self._eventos_pausados_ate = time.time() + PAUSA_APOS_ERRO_S
+            texto, fala = ("Não consegui responder agora, senhor: o Claude devolveu um erro (talvez limite de uso). "
+                           "Os avisos automáticos ficam pausados por dez minutos.",
+                           "Não consegui responder agora, senhor.")
+        self._registrar("jarvis", texto)
+        self.publicar({"tipo": "resposta_fim", "texto": texto})
+        self._falar(fala)
+        self._definir_estado("desconectado" if evento.get("subtype") == "error_restart" else "ocioso")
 
     def _acrescentar(self, texto: str) -> None:
         self._resposta += texto
@@ -298,6 +324,11 @@ class Cerebro:
         if self.bloqueada():
             self._estava_bloqueada = True
             return
+        if self.claude.ocupado and time.time() - self._ultima_saida >= TRAVADO_S:
+            print("cérebro: Claude sem resposta há muito tempo; reiniciando", flush=True)
+            self._ultima_saida = time.time()
+            self.claude.reiniciar()
+            return
         if self.claude.ocupado or self.escuta.ativa:  # não começa turno com o senhor falando
             return
         if self._estava_bloqueada:
@@ -309,7 +340,7 @@ class Cerebro:
                 return
         if self._fila_usuario:
             self._enviar_claude(*self._fila_usuario.popleft())
-        elif not self._fila_eventos.vazia:
+        elif not self._fila_eventos.vazia and time.time() >= self._eventos_pausados_ate:
             self._enviar_claude("[eventos]\n" + "\n".join(self._fila_eventos.retirar()), "eventos")
 
     def laco(self) -> None:

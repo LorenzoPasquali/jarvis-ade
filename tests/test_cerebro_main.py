@@ -276,3 +276,50 @@ def test_escuta_vazia_com_claude_ocupado_nao_deixa_ouvindo(cerebro_falso):
     c._ao_fim_escuta(None)
     estados = [p["valor"] for p in publicados if p["tipo"] == "estado"]
     assert estados and estados[-1] == "pensando"
+
+
+class ClaudeComReinicio(ClaudeFalso):
+    def __init__(self):
+        super().__init__()
+        self.reinicios = 0
+
+    def reiniciar(self):
+        self.reinicios += 1
+
+
+def test_vigia_de_travamento_reinicia_o_claude(dados_tmp, monkeypatch):
+    claude = ClaudeComReinicio()
+    c = Cerebro(claude=claude, falar=lambda t: True, bloqueada=lambda: False, chamar_voz=lambda *a, **k: {})
+    c.mensagem_usuario("oi", falada=False)
+    monkeypatch.setattr(cerebro_main, "TRAVADO_S", 0)
+    c.laco_uma_vez()
+    assert claude.reinicios == 1
+
+
+def test_erro_do_claude_vira_aviso_curto_e_pausa_eventos(cerebro_falso):
+    c, claude = cerebro_falso
+    publicados, falas = [], []
+    c.publicar = publicados.append
+    c._falar_fn = lambda t: falas.append(t) or True
+    c.ao_evento_claude({"type": "result", "is_error": True,
+                        "result": "Claude AI usage limit reached|1792450000"})
+    fim = [p for p in publicados if p["tipo"] == "resposta_fim"][-1]
+    assert "usage limit" not in fim["texto"] and "senhor" in fim["texto"]
+    assert falas and "usage limit" not in falas[0]
+    claude.ocupado = False
+    eventos.anexar(ev("terminou"))
+    c.laco_uma_vez()
+    assert claude.enviados == []
+
+
+def test_queda_no_meio_mantem_desconectado_e_pede_para_repetir(cerebro_falso):
+    c, _ = cerebro_falso
+    publicados = []
+    c.publicar = publicados.append
+    c.ao_evento_claude({"type": "jarvis_reiniciando"})
+    c.ao_evento_claude({"type": "result", "subtype": "error_restart", "is_error": True, "result": ""})
+    estados = [p["valor"] for p in publicados if p["tipo"] == "estado"]
+    assert estados[-1] == "desconectado"
+    assert "repetir" in [p for p in publicados if p["tipo"] == "resposta_fim"][-1]["texto"]
+    c.ao_evento_claude({"type": "jarvis_pronto"})
+    assert [p["valor"] for p in publicados if p["tipo"] == "estado"][-1] == "ocioso"

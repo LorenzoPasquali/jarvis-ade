@@ -29,6 +29,8 @@ class ProcessoClaude:
         self._trava = threading.Lock()
         self._parando = False
         self._pendente: str | None = None
+        self._inicio = 0.0
+        self._falhas_rapidas = 0
         self.ocupado = False
 
     def _sessao(self) -> str | None:
@@ -49,10 +51,17 @@ class ProcessoClaude:
             self._parando = False
             self._proc = subprocess.Popen(self.comando_atual(), cwd=self._cwd, env=self._env, text=True,
                                           stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=1)
+            self._inicio = time.time()
             threading.Thread(target=self._ler, args=(self._proc,), daemon=True).start()
             pendente, self._pendente = self._pendente, None
+        self._ao_evento({"type": "jarvis_pronto"})
         if pendente is not None:
             self.enviar(pendente)
+
+    def reiniciar(self) -> None:
+        """Mata o processo travado; o leitor percebe a saída e sobe outro (com --resume)."""
+        if self._proc and self._proc.poll() is None:
+            self._proc.kill()
 
     def enviar(self, texto: str) -> None:
         """Entrega a mensagem; se o processo estiver reiniciando, ela sai assim que ele voltar."""
@@ -90,8 +99,17 @@ class ProcessoClaude:
             return
         self._ao_evento({"type": "jarvis_reiniciando"})
         if self.ocupado:
-            self.ocupado = False
             self._ao_evento({"type": "result", "subtype": "error_restart", "is_error": True, "result": ""})
-        time.sleep(self._espera_reinicio)
-        if not self._parando:
-            self.iniciar()
+            self.ocupado = False
+        # Morrer logo depois de subir, várias vezes seguidas, costuma ser sessão que não retoma: começa outra.
+        self._falhas_rapidas = self._falhas_rapidas + 1 if time.time() - self._inicio < 10 else 0
+        if self._falhas_rapidas >= 3:
+            self._arquivo_sessao.unlink(missing_ok=True)
+        espera = min(60.0, self._espera_reinicio * 2 ** min(self._falhas_rapidas, 5))
+        while not self._parando:
+            time.sleep(espera)
+            try:
+                self.iniciar()
+                return
+            except OSError:
+                espera = min(60.0, espera * 2)

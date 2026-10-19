@@ -75,3 +75,37 @@ def test_ocupado_so_libera_depois_de_tratar_o_resultado(tmp_path):
     assert vistos == [True]
     esperar(lambda: not p.ocupado)
     p.parar()
+
+
+MORRE_LOGO = [sys.executable, "-c", "import sys; sys.exit(1)"]
+
+
+def test_falhas_rapidas_seguidas_descartam_a_sessao(tmp_path):
+    (tmp_path / "s.json").write_text('{"session_id": "corrompida"}')
+    eventos = []
+    p = ProcessoClaude(MORRE_LOGO, tmp_path, os.environ.copy(), eventos.append, tmp_path / "s.json",
+                       espera_reinicio=0.05)
+    p.iniciar()
+    esperar(lambda: not (tmp_path / "s.json").exists(), limite=6)
+    p.parar()
+
+
+def test_avisa_quando_fica_pronto(tmp_path):
+    eventos = []
+    p = ProcessoClaude([sys.executable, FALSO], tmp_path, os.environ.copy(), eventos.append, tmp_path / "s.json")
+    p.iniciar()
+    assert {"type": "jarvis_pronto"} in eventos
+    p.parar()
+
+
+def test_reiniciar_libera_turno_travado(tmp_path):
+    eventos = []
+    trava = [sys.executable, "-c", "import sys, time\nfor l in sys.stdin: time.sleep(60)"]
+    p = ProcessoClaude(trava, tmp_path, os.environ.copy(), eventos.append, tmp_path / "s.json",
+                       espera_reinicio=0.05)
+    p.iniciar()
+    p.enviar("oi")
+    p.reiniciar()
+    esperar(lambda: any(e.get("subtype") == "error_restart" for e in eventos), limite=6)
+    assert not p.ocupado
+    p.parar()
