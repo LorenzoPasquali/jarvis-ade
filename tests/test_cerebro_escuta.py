@@ -97,3 +97,36 @@ def test_escuta_sem_arquivo_libera_a_voz_e_termina(dados_tmp):
     assert fim.wait(3)
     assert resultado["texto"] is None and not e.ativa
     assert ("/ouvindo", {"ligado": False}) in chamadas
+
+
+# Níveis reais (blocos de 100 ms) de uma escuta no serviço em 19/10 19:21: microfone limpo e fala baixa.
+NIVEIS_MICROFONE_BAIXO = [
+    0.002, 0.017, 0.003, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.005, 0.003, 0.003, 0.001, 0.002,
+    0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.002, 0.001, 0.003, 0.001, 0.001, 0.001, 0.001, 0.002,
+    0.002, 0.002, 0.002, 0.002, 0.022, 0.037, 0.026, 0.027, 0.025, 0.044, 0.025, 0.008, 0.003, 0.001, 0.001,
+    0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001]
+
+
+def test_fala_baixa_em_microfone_limpo_termina_depois_do_silencio():
+    d = DetectorSilencio()
+    resultados = [d.alimentar(n, i * 0.1) for i, n in enumerate(NIVEIS_MICROFONE_BAIXO)]
+    assert "vazio" not in resultados and "fim" in resultados
+    assert resultados.index("fim") * 0.1 == pytest.approx(5.1, abs=0.25)
+
+
+def test_leitura_sem_audio_novo_nao_derruba_o_piso():
+    d = DetectorSilencio()
+    ruido = [0.019, 0.025, 0.036, 0.042, 0.021, 0.03, 0.019, 0.028]
+    resultado = None
+    for i in range(70):
+        nivel = None if i % 3 == 0 else ruido[i % len(ruido)]
+        resultado = d.alimentar(nivel, i * 0.1)
+        if resultado:
+            break
+    assert resultado == "vazio"
+
+
+def test_sem_audio_algum_termina_vazio():
+    d = DetectorSilencio()
+    resultados = [d.alimentar(None, i * 0.1) for i in range(62)]
+    assert resultados[-1] == "vazio" or "vazio" in resultados

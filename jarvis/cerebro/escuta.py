@@ -32,14 +32,18 @@ class DetectorSilencio:
     ser conhecido, ainda conta.
     """
 
-    def __init__(self, limiar_minimo: float = 0.03, fator: float = 3.0, silencio_s: float = 1.0,
+    def __init__(self, limiar_minimo: float = 0.008, fator: float = 3.0, silencio_s: float = 1.0,
                  espera_fala_s: float = 6.0, maximo_s: float = 30.0, blocos_minimos: int = 3):
         self.limiar_minimo, self.fator, self.blocos_minimos = limiar_minimo, fator, blocos_minimos
         self.silencio_s, self.espera_fala_s, self.maximo_s = silencio_s, espera_fala_s, maximo_s
         self._historico: list[tuple[float, float]] = []
 
-    def alimentar(self, nivel: float, t: float) -> str | None:
-        self._historico.append((t, nivel))
+    def alimentar(self, nivel: float | None, t: float) -> str | None:
+        """`nivel=None`: nenhum áudio novo nesta leitura — só o relógio anda (não derruba o piso do ruído)."""
+        if nivel is not None:
+            self._historico.append((t, nivel))
+        if not self._historico:
+            return "vazio" if t >= self.espera_fala_s else None
         piso = min(n for _, n in self._historico)
         limiar = max(self.limiar_minimo, piso * self.fator)
         sons = [instante for instante, n in self._historico if n >= limiar]
@@ -93,20 +97,22 @@ class Escuta:
             if self._encerrar.wait(0.1):
                 resultado = "fim"
                 break
+            novo = b""
             try:
                 with arquivo.open("rb") as f:
                     if offset is None:
                         offset = _inicio_dados(f.read(4096))
-                        if offset is None:
-                            continue
-                    f.seek(offset)
-                    novo = f.read()
+                    if offset is not None:
+                        f.seek(offset)
+                        novo = f.read()
             except FileNotFoundError:
-                continue
+                pass
             novo = novo[: len(novo) - len(novo) % 2]
-            offset += len(novo)
-            nivel = rms(novo)
-            self._ao_nivel(nivel)
+            nivel = None
+            if novo:
+                offset += len(novo)
+                nivel = rms(novo)
+                self._ao_nivel(nivel)
             resultado = detector.alimentar(nivel, time.time() - inicio)
         texto = None
         try:
