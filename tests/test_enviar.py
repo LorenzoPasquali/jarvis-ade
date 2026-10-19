@@ -21,6 +21,14 @@ def falso_ok(args, **kwargs):
     return {}
 
 
+def esperando(pane):
+    return "waiting"
+
+
+def permissao(pane):
+    return "permission"
+
+
 def test_resolve_por_projeto_sem_diferenciar_maiusculas():
     d = resolver_destino("App-Analise-Saude", None, AGENTES, TERMINAIS, SESSAO)
     assert d.terminal == "term_saude" and d.projeto == "app-analise-saude"
@@ -61,40 +69,40 @@ def test_recusa_terminal_nao_gravavel():
 
 def test_voz_sem_confirmacao_recusa_e_registra(dados_tmp):
     with pytest.raises(EnvioRecusado):
-        enviar(DEST, texto="segue", tecla=None, origem="voz", motivo="", confirmado=False, executar=falso_ok)
+        enviar(DEST, texto="segue", tecla=None, origem="voz", motivo="", confirmado=False, executar=falso_ok, estado_atual=esperando)
     assert ler_acoes(dados_tmp)[-1]["resultado"].startswith("recusado")
 
 
 def test_regra_exige_motivo(dados_tmp):
     with pytest.raises(EnvioRecusado):
-        enviar(DEST, texto="1", tecla=None, origem="regra", motivo="", confirmado=False, executar=falso_ok)
+        enviar(DEST, texto="1", tecla=None, origem="regra", motivo="", confirmado=False, executar=falso_ok, estado_atual=esperando)
 
 
 def test_exige_exatamente_texto_ou_tecla(dados_tmp):
     with pytest.raises(EnvioRecusado):
-        enviar(DEST, texto="a", tecla="1", origem="texto", motivo="", confirmado=False, executar=falso_ok)
+        enviar(DEST, texto="a", tecla="1", origem="texto", motivo="", confirmado=False, executar=falso_ok, estado_atual=esperando)
     with pytest.raises(EnvioRecusado):
-        enviar(DEST, texto=None, tecla=None, origem="texto", motivo="", confirmado=False, executar=falso_ok)
+        enviar(DEST, texto=None, tecla=None, origem="texto", motivo="", confirmado=False, executar=falso_ok, estado_atual=esperando)
 
 
 def test_texto_envia_com_enter_e_registra(dados_tmp):
     chamadas = []
     enviar(DEST, texto="segue com o plano", tecla=None, origem="texto", motivo="ordem", confirmado=False,
-           executar=lambda args, **k: chamadas.append(args) or {})
+           executar=lambda args, **k: chamadas.append(args) or {}, estado_atual=esperando)
     assert chamadas[0] == ["terminal", "send", "--terminal", "term_saude", "--text", "segue com o plano", "--enter"]
     acao = ler_acoes(dados_tmp)[-1]
     assert acao["resultado"] == "ok" and acao["projeto"] == "app-analise-saude" and acao["origem"] == "texto"
 
 
 def test_voz_confirmada_envia(dados_tmp):
-    enviar(DEST, texto="segue", tecla=None, origem="voz", motivo="", confirmado=True, executar=falso_ok)
+    enviar(DEST, texto="segue", tecla=None, origem="voz", motivo="", confirmado=True, executar=falso_ok, estado_atual=esperando)
     assert ler_acoes(dados_tmp)[-1]["confirmado"] is True
 
 
 def test_tecla_sem_enter(dados_tmp):
     chamadas = []
     enviar(DEST, texto=None, tecla="1", origem="regra", motivo="regra: testes liberados", confirmado=False,
-           executar=lambda args, **k: chamadas.append(args) or {})
+           executar=lambda args, **k: chamadas.append(args) or {}, estado_atual=permissao)
     assert "--enter" not in chamadas[0] and chamadas[0][-1] == "1"
 
 
@@ -102,5 +110,47 @@ def test_falha_do_orca_registra_erro(dados_tmp):
     def falha(args, **k):
         raise OrcaErro("runtime_unavailable", "x")
     with pytest.raises(OrcaErro):
-        enviar(DEST, texto="oi", tecla=None, origem="texto", motivo="", confirmado=False, executar=falha)
+        enviar(DEST, texto="oi", tecla=None, origem="texto", motivo="", confirmado=False, executar=falha,
+               estado_atual=esperando)
     assert ler_acoes(dados_tmp)[-1]["resultado"] == "erro: runtime_unavailable"
+
+
+def test_recusa_terminal_sem_agente():
+    terms = {**TERMINAIS, "P-SHELL": Terminal("term_root_vps", "P-SHELL", "/opt", True)}
+    with pytest.raises(EnvioRecusado) as e:
+        resolver_destino(None, "term_root_vps", AGENTES, terms, SESSAO)
+    assert "agente" in str(e.value)
+
+
+@pytest.mark.parametrize("texto", ["!rm -rf /", "  !ls", "/clear", " /compact"])
+def test_recusa_shell_e_comandos_de_barra(dados_tmp, texto):
+    with pytest.raises(EnvioRecusado):
+        enviar(DEST, texto=texto, tecla=None, origem="texto", motivo="x", confirmado=False,
+               executar=lambda *a, **k: pytest.fail("não deveria enviar"), estado_atual=esperando)
+
+
+@pytest.mark.parametrize("tecla", ["123", "1;", "\x1b", " ", "y\n"])
+def test_recusa_tecla_fora_do_padrao(dados_tmp, tecla):
+    with pytest.raises(EnvioRecusado):
+        enviar(DEST, texto=None, tecla=tecla, origem="regra", motivo="regra", confirmado=False,
+               executar=lambda *a, **k: pytest.fail("não deveria enviar"), estado_atual=permissao)
+
+
+def test_texto_recusado_durante_pedido_de_permissao(dados_tmp):
+    with pytest.raises(EnvioRecusado) as e:
+        enviar(DEST, texto="não faça isso", tecla=None, origem="texto", motivo="x", confirmado=False,
+               executar=lambda *a, **k: pytest.fail("Enter aprovaria a permissão"), estado_atual=permissao)
+    assert "permissão" in str(e.value)
+    assert ler_acoes(dados_tmp)[-1]["resultado"].startswith("recusado")
+
+
+def test_tecla_exige_pergunta_aberta(dados_tmp):
+    with pytest.raises(EnvioRecusado):
+        enviar(DEST, texto=None, tecla="1", origem="regra", motivo="regra", confirmado=False,
+               executar=lambda *a, **k: pytest.fail("não deveria enviar"), estado_atual=lambda p: "working")
+
+
+def test_recusa_sessao_que_fechou(dados_tmp):
+    with pytest.raises(EnvioRecusado):
+        enviar(DEST, texto="oi", tecla=None, origem="texto", motivo="x", confirmado=False,
+               executar=lambda *a, **k: pytest.fail("não deveria enviar"), estado_atual=lambda p: None)

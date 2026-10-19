@@ -1,6 +1,7 @@
 """Envio de mensagens/teclas a um agente do Orca, sempre registrado em `dados/acoes.jsonl`."""
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -9,6 +10,8 @@ from jarvis.config import dados
 from jarvis.orca import Agente, OrcaErro, Terminal
 
 ORIGENS = ("voz", "texto", "regra")
+_TECLA_VALIDA = re.compile(r"[0-9A-Za-z]{1,2}")
+_ESTADOS_COM_PERGUNTA = ("permission", "waiting")
 
 
 class EnvioRecusado(Exception):
@@ -40,7 +43,9 @@ def resolver_destino(projeto: str | None, terminal: str | None, agentes: list[Ag
         if not alvo.gravavel:
             raise EnvioRecusado(f"O terminal {terminal} não aceita entrada agora.")
         dono = next((a for a in agentes if a.pane_key == alvo.pane_key), None)
-        return Destino(alvo.handle, alvo.pane_key, dono.projeto if dono else "", alvo.caminho)
+        if dono is None:
+            raise EnvioRecusado(f"O terminal {terminal} não tem um agente; o Jarvis só envia para sessões de agentes.")
+        return Destino(alvo.handle, alvo.pane_key, dono.projeto, alvo.caminho)
 
     if not projeto:
         raise EnvioRecusado("Informe --projeto ou --terminal.")
@@ -72,6 +77,10 @@ def _registrar(destino: Destino, texto: str | None, tecla: str | None, origem: s
 def _validar(texto: str | None, tecla: str | None, origem: str, motivo: str, confirmado: bool) -> str | None:
     if (texto is None) == (tecla is None) or (texto is not None and not texto.strip()):
         return "informe exatamente um entre texto e tecla"
+    if texto is not None and texto.lstrip()[0] in "!/":
+        return "texto começando com ! ou / vira comando no agente e não é permitido"
+    if tecla is not None and not _TECLA_VALIDA.fullmatch(tecla):
+        return "tecla deve ser uma opção curta, como 1 ou y"
     if origem not in ORIGENS:
         return f"origem inválida: {origem}"
     if origem == "voz" and not confirmado:
@@ -81,9 +90,24 @@ def _validar(texto: str | None, tecla: str | None, origem: str, motivo: str, con
     return None
 
 
+def _estado_no_orca(pane_key: str | None) -> str | None:
+    return next((a.estado for a in orca.agentes() if a.pane_key == pane_key), None)
+
+
+def _validar_estado(estado: str | None, texto: str | None) -> str | None:
+    if estado is None:
+        return "a sessão do agente não está mais aberta"
+    if texto is not None and estado == "permission":
+        return "o agente está num pedido de permissão; Enter aprovaria a opção marcada (responda com --tecla)"
+    if texto is None and estado not in _ESTADOS_COM_PERGUNTA:
+        return "não há pergunta ou pedido de permissão aberto nesse agente"
+    return None
+
+
 def enviar(destino: Destino, *, texto: str | None, tecla: str | None, origem: str, motivo: str,
-           confirmado: bool, executar=orca.executar) -> dict:
-    problema = _validar(texto, tecla, origem, motivo, confirmado)
+           confirmado: bool, executar=orca.executar, estado_atual=_estado_no_orca) -> dict:
+    problema = _validar(texto, tecla, origem, motivo, confirmado) or _validar_estado(estado_atual(destino.pane_key),
+                                                                                      texto)
     if problema:
         _registrar(destino, texto, tecla, origem, motivo, confirmado, f"recusado: {problema}")
         raise EnvioRecusado(f"Não enviei: {problema}.")
