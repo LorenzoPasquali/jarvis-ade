@@ -64,6 +64,15 @@ def listar(apenas_abertas: bool = True) -> list[dict]:
     return [p for p in itens if p["estado"] == "aguardando"] if apenas_abertas else itens
 
 
+def obter(id_: int) -> dict:
+    with _travado():
+        itens = _carregar()
+    pendencia = next((p for p in itens if p["id"] == id_), None)
+    if pendencia is None:
+        raise ValueError(f"Não existe a pendência {id_}.")
+    return pendencia
+
+
 def _aberta(itens: list[dict], id_: int) -> dict:
     pendencia = next((p for p in itens if p["id"] == id_), None)
     if pendencia is None:

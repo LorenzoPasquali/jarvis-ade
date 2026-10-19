@@ -11,7 +11,7 @@ from collections import deque
 from collections.abc import Callable
 from datetime import datetime
 
-from jarvis import consultas, orca, pendencias, voz_cliente
+from jarvis import consultas, orca, pendencias, turno, voz_cliente
 from jarvis.cerebro import escuta as escuta_mod
 from jarvis.cerebro.eventos import FilaEventos
 from jarvis.cerebro.fala import SeparadorFala
@@ -39,7 +39,7 @@ class Cerebro:
         self._chamar_voz = chamar_voz
         self._ouvintes: list[queue.Queue] = []
         self._trava = threading.Lock()
-        self._fila_usuario: deque[str] = deque()
+        self._fila_usuario: deque[tuple[str, str]] = deque()
         self._fila_eventos = FilaEventos(dados() / "cerebro-cursor")
         self._estava_bloqueada = False
         self._resposta = ""
@@ -116,15 +116,16 @@ class Cerebro:
         self._registrar("usuario", texto)
         self.publicar({"tipo": "usuario", "texto": texto, "falada": falada})
         self._chamar_voz("/parar")
-        self._para_claude(f"[voz] {texto}" if falada else texto)
+        self._para_claude(f"[voz] {texto}" if falada else texto, "voz" if falada else "texto")
 
-    def _para_claude(self, texto: str) -> None:
+    def _para_claude(self, texto: str, tipo: str) -> None:
         if self.claude.ocupado or self._fila_usuario:
-            self._fila_usuario.append(texto)
+            self._fila_usuario.append((texto, tipo))
         else:
-            self._enviar_claude(texto)
+            self._enviar_claude(texto, tipo)
 
-    def _enviar_claude(self, texto: str) -> None:
+    def _enviar_claude(self, texto: str, tipo: str) -> None:
+        turno.registrar(tipo)
         self._resposta = ""
         self._pendencia_no_turno = False
         self._separador.reiniciar()
@@ -171,6 +172,7 @@ class Cerebro:
             if interno.get("type") == "content_block_delta" and delta.get("type") == "text_delta":
                 self._acrescentar(delta.get("text", ""))
         elif tipo == "result":
+            turno.encerrar()
             texto = evento.get("result") or self._resposta
             self._separador.fim(texto)
             if texto.strip():
@@ -231,7 +233,7 @@ class Cerebro:
         self.publicar({"tipo": "cartao_fim", "id": id_, "estado": p["estado"]})
         verbo = "aprovou" if decisao == "aprovar" else "recusou"
         self._para_claude(f"[sistema] O senhor {verbo} pela janela a pendência {id_} ({p['descricao']}). "
-                          f"Resultado: {p['resultado'] or p['estado']}.")
+                          f"Resultado: {p['resultado'] or p['estado']}.", "sistema")
 
     def pedir_permissao(self, ferramenta: str, entrada: dict) -> bool:
         id_ = f"perm-{next(self._ids_permissao)}"
@@ -293,12 +295,12 @@ class Cerebro:
             if not self._fila_eventos.vazia:
                 linhas = "\n".join(self._fila_eventos.retirar())
                 self._enviar_claude("[sistema] O senhor voltou. Resuma em uma fala curta o que aconteceu "
-                                    f"enquanto esteve fora:\n{linhas}")
+                                    f"enquanto esteve fora:\n{linhas}", "sistema")
                 return
         if self._fila_usuario:
-            self._enviar_claude(self._fila_usuario.popleft())
+            self._enviar_claude(*self._fila_usuario.popleft())
         elif not self._fila_eventos.vazia:
-            self._enviar_claude("[eventos]\n" + "\n".join(self._fila_eventos.retirar()))
+            self._enviar_claude("[eventos]\n" + "\n".join(self._fila_eventos.retirar()), "eventos")
 
     def laco(self) -> None:
         while True:
@@ -331,7 +333,7 @@ def main() -> int:
     from jarvis.cerebro.servidor import criar
 
     garantir_orca()
-    env = {**os.environ, "PATH": f"{RAIZ / 'bin'}{os.pathsep}{os.environ.get('PATH', '')}"}
+    env = {**os.environ, "PATH": f"{RAIZ / 'bin'}{os.pathsep}{os.environ.get('PATH', '')}", "JARVIS_CEREBRO": "1"}
     cerebro = Cerebro()
     cerebro.claude = ProcessoClaude(comando_claude(RAIZ, os.environ.get("JARVIS_MODELO", "sonnet")),
                                     RAIZ / "sessao", env, cerebro.ao_evento_claude, dados() / "cerebro-sessao.json")

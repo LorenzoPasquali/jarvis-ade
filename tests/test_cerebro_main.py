@@ -218,3 +218,25 @@ def test_cartao_aprovado_confirma_pendencia(servidor_cerebro, regras_tmp):
 def test_origem_null_recusada(servidor_cerebro):
     base, _ = servidor_cerebro
     assert post(base + "/api/mensagem", {"texto": "x"}, origin="null") == 403
+
+
+def test_cerebro_registra_o_tipo_de_cada_turno(cerebro_falso):
+    from jarvis import turno
+    c, claude = cerebro_falso
+    c.mensagem_usuario("oi", falada=False)
+    assert turno.atual()["tipo"] == "texto"
+    c.ao_evento_claude({"type": "result", "result": "ok"})
+    assert turno.atual()["tipo"] is None
+    claude.ocupado = False
+    c.mensagem_usuario("oi", falada=True)
+    assert turno.atual()["tipo"] == "voz"
+    c.ao_evento_claude({"type": "result", "result": "ok"})
+    claude.ocupado = False
+    eventos.anexar(ev("terminou"))
+    c.laco_uma_vez()
+    assert turno.atual()["tipo"] == "eventos"
+
+
+def test_main_marca_o_ambiente_do_cerebro():
+    import inspect
+    assert '"JARVIS_CEREBRO": "1"' in inspect.getsource(cerebro_main.main)

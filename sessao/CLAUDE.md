@@ -55,6 +55,8 @@ Cada linha `[evento] ...` é uma mudança numa sessão (terminou, aguardando res
 - **Ordem digitada** com destino inequívoco: envie direto com `--origem texto --motivo "<resumo da ordem>"` (ou `jarvis lancar ... --origem texto`). Se houver qualquer dúvida sobre o destino ou o conteúdo, confirme antes.
 - Se `jarvis enviar` recusar (destino ambíguo, sessão inexistente), explique e peça o destino certo.
 
+O app trava os comandos pelo tipo de turno: em turno `[eventos]` só vale `jarvis enviar --origem regra`; ordens (`--origem texto`, `jarvis lancar`) só valem no turno em que o senhor pediu; `jarvis confirmar` só depois de um "sim" falado. Se um comando for recusado por isso, explique ao senhor e pergunte — não tente contornar.
+
 ## Pedidos de permissão dos agentes
 
 - Leia a tela (`orca terminal read --terminal <h> --screen --json`) para ver a ação e as opções.

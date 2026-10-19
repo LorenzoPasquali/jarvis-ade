@@ -87,6 +87,13 @@ def _enviar(args: argparse.Namespace) -> int:
     from jarvis import enviar, orca, sessao
     from jarvis.orca import OrcaErro
 
+    from jarvis import turno
+
+    try:
+        turno.exigir("enviar", args.origem)
+    except turno.ForaDoTurno as recusa:
+        print(recusa)
+        return 1
     try:
         destino = enviar.resolver_destino(args.projeto, args.terminal, orca.agentes(), orca.terminais(),
                                           sessao.ler())
@@ -162,10 +169,11 @@ def _hud(args: argparse.Namespace) -> int:
 
 
 def _lancar(args: argparse.Namespace) -> int:
-    from jarvis import lancar, orca, pendencias
+    from jarvis import lancar, orca, pendencias, turno
     from jarvis.orca import OrcaErro
 
     try:
+        turno.exigir("lancar", args.origem)
         plano = lancar.planejar(args.projeto, args.tarefa, orca.agentes(), orca.executar(["repo", "list"])["repos"])
         if plano["acao"] == "perguntar":
             print(plano["motivo"])
@@ -177,7 +185,7 @@ def _lancar(args: argparse.Namespace) -> int:
             print(f"Aguardando confirmação do senhor (pendência {p['id']}): {verbo.lower()} {alvo}.")
             return 0
         print(lancar.executar_plano(plano, origem="texto"))
-    except (ValueError, OrcaErro) as erro:
+    except (ValueError, OrcaErro, turno.ForaDoTurno) as erro:
         print(erro)
         return 1
     return 0
@@ -203,11 +211,15 @@ def _regra(args: argparse.Namespace) -> int:
 
 
 def _decidir(args: argparse.Namespace) -> int:
-    from jarvis import pendencias
+    from jarvis import pendencias, turno
 
     try:
-        p = pendencias.confirmar(args.id) if args.comando == "confirmar" else pendencias.recusar(args.id)
-    except ValueError as erro:
+        if args.comando == "confirmar":
+            turno.exigir_confirmacao(pendencias.obter(args.id))
+            p = pendencias.confirmar(args.id)
+        else:
+            p = pendencias.recusar(args.id)
+    except (ValueError, turno.ForaDoTurno) as erro:
         print(erro)
         return 1
     print(p["resultado"] or f"Pendência {p['id']}: {p['estado']}.")
