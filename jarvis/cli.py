@@ -225,6 +225,13 @@ def _pendencias(_: argparse.Namespace) -> int:
     return 0
 
 
+def _permissao_mcp(_: argparse.Namespace) -> int:
+    from jarvis import permissao_mcp
+
+    permissao_mcp.servir()
+    return 0
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="jarvis", description="Jarvis: orquestrador das sessões do Orca.")
     subs = parser.add_subparsers(dest="comando")
@@ -264,6 +271,7 @@ def _parser() -> argparse.ArgumentParser:
     sub("confirmar", "executa uma pendência aprovada pelo senhor", _decidir).add_argument("id", type=int)
     sub("recusar", "descarta uma pendência", _decidir).add_argument("id", type=int)
     sub("pendencias", "pendências aguardando o senhor", _pendencias)
+    sub("permissao-mcp", "servidor MCP de permissões do cérebro (uso interno)", _permissao_mcp)
     sub("vigia", "loop que registra mudanças das sessões", _vigia)
     sub("hook-fala", "hook Stop: fala a resposta do Jarvis", _hook_fala)
     sub("ouvir", "aperta-e-fala: começa ou termina a gravação", _ouvir)
