@@ -369,7 +369,21 @@ body[data-estado="desconectado"] .estado { color: var(--nevoa); }
 
 .cartao h2 { grid-column: 1; margin: 0; font-size: 14px; font-weight: 600; color: var(--ambar); }
 .cartao p { grid-column: 1; margin: 0; font-size: 16px; }
-.cartao .acoes { grid-column: 2; grid-row: 1 / span 2; display: flex; gap: 8px; }
+.cartao .acoes { grid-column: 2; grid-row: 1 / span 3; display: flex; gap: 8px; }
+.cartao .detalhe {
+  grid-column: 1;
+  max-height: 180px;
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  overflow: auto;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  font: 13px/1.4 "Saira", sans-serif;
+  font-stretch: 75%;
+  white-space: pre-wrap;
+  word-break: break-all;
+  text-shadow: none;
+}
 
 .cartao button, #entrada button {
   font: inherit;

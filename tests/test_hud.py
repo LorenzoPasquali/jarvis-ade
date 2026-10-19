@@ -47,3 +47,10 @@ def test_janela_e_transparente_e_por_cima():
     for trecho in ["get_rgba_visual", "set_app_paintable(True)", "set_background_color", "set_keep_above(True)",
                    "set_skip_taskbar_hint(True)", "fullscreen()", "SIGUSR1", "hud.pid"]:
         assert trecho in py, trecho
+
+
+def test_app_cuida_de_cartao_vencido_e_resposta_em_andamento():
+    js = (RAIZ / "hud/app.js").read_text()
+    assert "status === 409" in js or "status == 409" in js
+    assert 'replaceChildren()' in js.split('case "historico"')[1].split("break")[0]
+    assert "escrevendo" in js.split('case "usuario"')[1].split("break")[0]

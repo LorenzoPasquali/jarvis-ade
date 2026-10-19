@@ -18,6 +18,7 @@ from jarvis.cerebro.fala import SeparadorFala
 from jarvis.config import RAIZ, dados
 
 ESPERA_PERMISSAO_S = 120
+MAX_ENTRADA_PERMISSAO = 4000  # acima disso o cartão não daria para ler inteiro: nega
 TRAVADO_S = 300  # turno sem nenhuma saída do Claude por tanto tempo: considera travado e reinicia
 PAUSA_APOS_ERRO_S = 600
 MAX_HISTORICO = 50
@@ -55,6 +56,7 @@ class Cerebro:
         self._ultimo_sistema = 0.0
         self._estado = "ocioso"
         self._pendencia_no_turno = False
+        self._calar_turno = False  # o senhor falou por cima: o resto desta resposta não é falado
         self._ultima_saida = time.time()
         self._eventos_pausados_ate = 0.0
         self.janela_aberta = False
@@ -121,6 +123,8 @@ class Cerebro:
         self._registrar("usuario", texto)
         self.publicar({"tipo": "usuario", "texto": texto, "falada": falada})
         self._chamar_voz("/parar")
+        if self.claude.ocupado:
+            self._calar_turno = True
         self._para_claude(f"[voz] {texto}" if falada else texto, "voz" if falada else "texto")
 
     def _para_claude(self, texto: str, tipo: str) -> None:
@@ -132,6 +136,7 @@ class Cerebro:
 
     def _enviar_claude(self, texto: str, tipo: str) -> None:
         turno.registrar(tipo)
+        self._calar_turno = False
         self._ultima_saida = time.time()
         self._resposta = ""
         self._pendencia_no_turno = False
@@ -162,6 +167,8 @@ class Cerebro:
     # ---------- saída do Claude ----------
 
     def _falar(self, texto: str) -> None:
+        if self._calar_turno:
+            return
         if not self.janela_aberta:
             self.publicar({"tipo": "aviso", "texto": texto})
         self._definir_estado("falando")
@@ -249,9 +256,17 @@ class Cerebro:
                 self._cartoes.add(id_)
                 self._pendencia_no_turno = True
                 self.publicar(self._cartao_de(p))
-        for id_ in list(self._cartoes - abertas.keys()):
-            self._cartoes.discard(id_)
-            self.publicar({"tipo": "cartao_fim", "id": id_, "estado": "fechada"})
+        fechadas = self._cartoes - abertas.keys()
+        if fechadas:
+            estados = {p["id"]: p for p in pendencias.listar(apenas_abertas=False)}
+            for id_ in fechadas:
+                self._cartoes.discard(id_)
+                p = estados.get(id_, {"estado": "fechada", "descricao": ""})
+                self.publicar({"tipo": "cartao_fim", "id": id_, "estado": p["estado"]})
+                if p["estado"] == "expirada":
+                    aviso = "A confirmação expirou sem resposta, senhor. Nada foi feito."
+                    self._registrar("jarvis", f"{aviso} ({p['descricao']})")
+                    self._falar(aviso)
 
     def decidir_cartao(self, id_, decisao: str) -> None:
         if isinstance(id_, str) and id_ in self._permissoes:
@@ -268,13 +283,14 @@ class Cerebro:
                           f"Resultado: {p['resultado'] or p['estado']}.", "sistema")
 
     def pedir_permissao(self, ferramenta: str, entrada: dict) -> bool:
+        detalhe = json.dumps(entrada, ensure_ascii=False, indent=1)
+        if len(detalhe) > MAX_ENTRADA_PERMISSAO:
+            return False  # o senhor não conseguiria ler tudo o que aprovaria
         id_ = f"perm-{next(self._ids_permissao)}"
         pedido = {"pronto": threading.Event(), "aprovado": False}
         self._permissoes[id_] = pedido
-        resumo = json.dumps(entrada, ensure_ascii=False)
-        resumo = resumo if len(resumo) <= 160 else resumo[:157] + "…"
         self.publicar({"tipo": "cartao", "id": id_, "tipo_pendencia": "permissao",
-                       "descricao": f"O Jarvis quer usar **{ferramenta}**: {resumo}"})
+                       "descricao": f"O Jarvis quer usar **{ferramenta}**:", "detalhe": detalhe})
         pedido["pronto"].wait(ESPERA_PERMISSAO_S)
         del self._permissoes[id_]
         self.publicar({"tipo": "cartao_fim", "id": id_, "estado": "aprovada" if pedido["aprovado"] else "recusada"})

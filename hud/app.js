@@ -160,7 +160,8 @@
     cartao.setAttribute("role", "group");
     const titulo = NOME_PENDENCIA[evento.tipo_pendencia] || "Confirmar";
     const aprovar = evento.tipo_pendencia === "enviar" ? "Enviar" : evento.tipo_pendencia === "lancar" ? "Abrir" : "Aprovar";
-    cartao.innerHTML = `<h2>${escapar(titulo)}</h2><p>${inline(evento.descricao)}</p>` +
+    const detalhe = evento.detalhe ? `<pre class="detalhe">${escapar(evento.detalhe)}</pre>` : "";
+    cartao.innerHTML = `<h2>${escapar(titulo)}</h2><p>${inline(evento.descricao)}</p>${detalhe}` +
       `<div class="acoes"><button type="button" class="aprovar">${aprovar}</button>` +
       `<button type="button" class="recusar">Cancelar</button></div>`;
     cartao.querySelector(".aprovar").addEventListener("click", () => decidirCartao(evento.id, "aprovar"));
@@ -177,7 +178,10 @@
 
   function decidirCartao(id, decisao) {
     if (DEMO) { fimCartao({ id, estado: decisao }); return; }
-    enviarAoCerebro("/api/cartao", { id, decisao });
+    enviarAoCerebro("/api/cartao", { id, decisao }).then((r) => {
+      // pendência que já expirou ou foi decidida: o cartão sai da tela
+      if (r && (r.status === 409 || r.status === 404)) fimCartao({ id, estado: "vencida" });
+    });
   }
 
   // ---------- sistema ----------
@@ -207,7 +211,11 @@
     switch (evento.tipo) {
       case "estado": definirEstado(evento.valor); break;
       case "nivel": $("nucleo").style.setProperty("--nivel", Math.min(1, evento.valor * 4)); document.body.style.setProperty("--nivel", Math.min(1, evento.valor * 4)); break;
-      case "usuario": respostaAtual = null; adicionarMensagem("usuario", evento.texto); break;
+      case "usuario":
+        // pergunta feita no meio de uma resposta: a resposta em andamento continua no mesmo balão
+        if (!respostaAtual || !respostaAtual.classList.contains("escrevendo")) respostaAtual = null;
+        adicionarMensagem("usuario", evento.texto);
+        break;
       case "delta": delta(evento.texto); break;
       case "resposta_fim": respostaFim(evento.texto); break;
       case "sessoes": desenharSessoes(evento.itens); break;
@@ -215,6 +223,8 @@
       case "cartao_fim": fimCartao(evento); break;
       case "sistema": sistema(evento); break;
       case "historico":
+        respostaAtual = null;
+        $("cartoes").replaceChildren();
         $("conversa").replaceChildren();
         for (const m of evento.mensagens) adicionarMensagem(m.papel, m.texto);
         break;

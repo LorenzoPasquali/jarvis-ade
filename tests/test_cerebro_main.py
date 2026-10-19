@@ -323,3 +323,57 @@ def test_queda_no_meio_mantem_desconectado_e_pede_para_repetir(cerebro_falso):
     assert "repetir" in [p for p in publicados if p["tipo"] == "resposta_fim"][-1]["texto"]
     c.ao_evento_claude({"type": "jarvis_pronto"})
     assert [p["valor"] for p in publicados if p["tipo"] == "estado"][-1] == "ocioso"
+
+
+def _delta(texto):
+    return {"type": "stream_event", "event": {"type": "content_block_delta",
+                                              "delta": {"type": "text_delta", "text": texto}}}
+
+
+def test_pergunta_no_meio_cala_o_resto_da_resposta(cerebro_falso):
+    c, claude = cerebro_falso
+    falas = []
+    c._falar_fn = lambda t: falas.append(t) or True
+    c.mensagem_usuario("primeira", falada=False)
+    c.ao_evento_claude(_delta("🔊 Primeira parte.\n"))
+    c.mensagem_usuario("segunda", falada=True)
+    c.ao_evento_claude(_delta("🔊 Parte velha.\n"))
+    c.ao_evento_claude({"type": "result", "result": "🔊 Primeira parte.\n🔊 Parte velha.\n"})
+    assert falas == ["Primeira parte."]
+    claude.ocupado = False
+    c.laco_uma_vez()
+    c.ao_evento_claude(_delta("🔊 Resposta nova.\n"))
+    assert falas[-1] == "Resposta nova."
+
+
+def test_pendencia_expirada_e_anunciada(cerebro_falso, regras_tmp, monkeypatch):
+    c, _ = cerebro_falso
+    publicados, falas = [], []
+    c.publicar = publicados.append
+    c._falar_fn = lambda t: falas.append(t) or True
+    p = pendencias.criar("regra", "Nova regra: «x»", {"texto": "x"})
+    c.laco_uma_vez()
+    agora = time.time()
+    monkeypatch.setattr(pendencias.time, "time", lambda: agora + 601)
+    c.laco_uma_vez()
+    assert {"tipo": "cartao_fim", "id": p["id"], "estado": "expirada"} in publicados
+    assert falas and "expirou" in falas[-1]
+
+
+def test_cartao_de_permissao_mostra_o_comando_inteiro(cerebro_falso, monkeypatch):
+    c, _ = cerebro_falso
+    publicados = []
+    c.publicar = publicados.append
+    monkeypatch.setattr(cerebro_main, "ESPERA_PERMISSAO_S", 0.05)
+    comando = "echo " + "a" * 300 + " && rm -rf /tmp/x"
+    c.pedir_permissao("Bash", {"command": comando})
+    cartao = [p for p in publicados if p["tipo"] == "cartao"][0]
+    assert "rm -rf /tmp/x" in cartao["descricao"] + cartao.get("detalhe", "")
+
+
+def test_permissao_gigante_e_negada_sem_cartao(cerebro_falso):
+    c, _ = cerebro_falso
+    publicados = []
+    c.publicar = publicados.append
+    assert c.pedir_permissao("Bash", {"command": "x" * 5000}) is False
+    assert not [p for p in publicados if p["tipo"] == "cartao"]
