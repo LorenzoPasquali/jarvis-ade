@@ -1,0 +1,23 @@
+{
+  "worktrees": [
+    {
+      "repo": "jarvis", "displayName": "jarvis", "path": "/git/jarvis", "status": "working",
+      "agents": [
+        {"paneKey": "TAB-J:LEAF-J", "parentPaneKey": null, "state": "working", "agentType": "claude",
+         "prompt": "analise o projeto", "lastAssistantMessage": null, "toolName": "Bash",
+         "stateStartedAt": 1792422085510}
+      ]
+    },
+    {
+      "repo": "app-analise-saude", "displayName": "app-analise-saude", "path": "/git/app-analise-saude", "status": "working",
+      "agents": [
+        {"paneKey": "TAB-S:LEAF-S", "parentPaneKey": null, "state": "waiting", "agentType": "claude",
+         "prompt": "revise o plano 4", "lastAssistantMessage": "Posso seguir com o plano 4?", "toolName": null,
+         "stateStartedAt": 1792422000000},
+        {"paneKey": "TAB-S:LEAF-SUB", "parentPaneKey": "TAB-S:LEAF-S", "state": "working", "agentType": "claude",
+         "prompt": "subtarefa", "lastAssistantMessage": "", "toolName": "Read", "stateStartedAt": 1792422001000}
+      ]
+    },
+    {"repo": "hostinger-sv", "displayName": "opt", "path": "/opt", "status": "inactive", "agents": []}
+  ]
+}

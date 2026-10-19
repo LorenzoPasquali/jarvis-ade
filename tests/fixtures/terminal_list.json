@@ -1,0 +1,10 @@
+{
+  "terminals": [
+    {"handle": "term_jarvis", "tabId": "TAB-J", "leafId": "LEAF-J", "worktreePath": "/git/jarvis",
+     "connected": true, "writable": true},
+    {"handle": "term_saude", "tabId": "TAB-S", "leafId": "LEAF-S", "worktreePath": "/git/app-analise-saude",
+     "connected": true, "writable": true},
+    {"handle": "term_flutuante", "tabId": "TAB-F", "leafId": "LEAF-F", "worktreePath": "",
+     "connected": true, "writable": false}
+  ]
+}
