@@ -332,14 +332,14 @@ def main() -> int:
     from jarvis.cerebro.claude import ProcessoClaude, comando_claude
     from jarvis.cerebro.servidor import criar
 
-    garantir_orca()
     env = {**os.environ, "PATH": f"{RAIZ / 'bin'}{os.pathsep}{os.environ.get('PATH', '')}", "JARVIS_CEREBRO": "1"}
     cerebro = Cerebro()
     cerebro.claude = ProcessoClaude(comando_claude(RAIZ, os.environ.get("JARVIS_MODELO", "sonnet")),
                                     RAIZ / "sessao", env, cerebro.ao_evento_claude, dados() / "cerebro-sessao.json")
-    cerebro.claude.iniciar()
-    servidor = criar(cerebro, porta=8766)
+    servidor = criar(cerebro, porta=8766)  # primeiro a porta: a janela do login já pode conectar
     threading.Thread(target=servidor.serve_forever, daemon=True).start()
+    garantir_orca()
+    cerebro.claude.iniciar()
     print("cérebro pronto em 127.0.0.1:8766", flush=True)
     cerebro.laco()
     return 0

@@ -62,7 +62,7 @@ class ProcessoClaude:
             try:
                 self._proc.stdin.write(linha + "\n")
                 self._proc.stdin.flush()
-            except (BrokenPipeError, OSError, ValueError):
+            except (BrokenPipeError, OSError, ValueError, AttributeError):  # ainda subindo ou reiniciando
                 self._pendente = texto
 
     def parar(self) -> None:

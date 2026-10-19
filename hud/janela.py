@@ -44,7 +44,16 @@ def _webview(ao_mensagem) -> WebKit2.WebView:
     conteudo.connect("script-message-received::jarvis", ao_mensagem)
     web = WebKit2.WebView.new_with_user_content_manager(conteudo)
     web.set_background_color(Gdk.RGBA(0, 0, 0, 0))
+    # No login a janela pode subir antes do cérebro: em vez de ficar na página de erro, tenta de novo.
+    web.connect("load-failed", lambda w, _evento, uri, _erro: _carregar_depois(w, uri))
+    web.connect("web-process-terminated", lambda w, _motivo: _carregar_depois(w, w.get_uri()))
     return web
+
+
+def _carregar_depois(web: WebKit2.WebView, uri: str | None) -> bool:
+    if uri:
+        GLib.timeout_add(1000, lambda: web.load_uri(uri) and GLib.SOURCE_REMOVE)
+    return True  # suprime a página de erro do WebKit
 
 
 def _texto(resultado) -> str:
