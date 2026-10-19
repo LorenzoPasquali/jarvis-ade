@@ -80,3 +80,20 @@ def test_estalo_isolado_nao_e_fala():
     niveis = [0.02, 0.022, 0.2, 0.021] + [0.02] * 60
     resultados = [d.alimentar(n, i * 0.1) for i, n in enumerate(niveis)]
     assert "fim" not in resultados and "vazio" in resultados
+
+
+def test_escuta_sem_arquivo_libera_a_voz_e_termina(dados_tmp):
+    import threading
+
+    from jarvis.cerebro.escuta import Escuta
+
+    chamadas, fim = [], threading.Event()
+    resultado = {}
+    e = Escuta(lambda n: None, lambda t: (resultado.setdefault("texto", t), fim.set()),
+               chamar=lambda rota, corpo=None, **k: chamadas.append((rota, corpo)) or {},
+               comando=["sleep", "10"])  # gravador que nunca cria o arquivo
+    e.iniciar()
+    e.encerrar()
+    assert fim.wait(3)
+    assert resultado["texto"] is None and not e.ativa
+    assert ("/ouvindo", {"ligado": False}) in chamadas

@@ -125,3 +125,10 @@ def test_recusa_pedidos_vindos_de_paginas_web(servidor_falso):
     assert post(servidor_falso, "/falar", {"texto": "x"},
                 {"Content-Type": "application/json", "Origin": "https://exemplo.com"})[0] == 403
     assert post(servidor_falso, "/falar", b'{"texto": "x"}', {"Content-Type": "text/plain"})[0] == 415
+
+
+def test_pausa_de_escuta_tem_limite_curto():
+    loc = Locutor(MotorFalso(), TocadorFalso())
+    antes = time.time()
+    loc.ouvindo(True)
+    assert loc._ouvindo_ate - antes <= 36

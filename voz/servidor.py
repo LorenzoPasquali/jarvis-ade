@@ -57,7 +57,7 @@ class Locutor:
                     break
         self.tocador.parar()
 
-    def ouvindo(self, ligado: bool, limite_s: float = 120.0) -> None:
+    def ouvindo(self, ligado: bool, limite_s: float = 35.0) -> None:
         """Segura a reprodução enquanto o usuário grava (com limite, caso o fim nunca chegue)."""
         self._ouvindo_ate = time.time() + limite_s if ligado else 0.0
 

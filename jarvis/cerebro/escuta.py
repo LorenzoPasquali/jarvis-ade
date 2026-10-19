@@ -60,8 +60,9 @@ def _inicio_dados(cabecalho: bytes) -> int | None:
 
 class Escuta:
     def __init__(self, ao_nivel: Callable[[float], None], ao_fim: Callable[[str | None], None],
-                 chamar=voz_cliente.chamar):
+                 chamar=voz_cliente.chamar, comando: list[str] | None = None):
         self._ao_nivel, self._ao_fim, self._chamar = ao_nivel, ao_fim, chamar
+        self._comando = comando
         self._proc: subprocess.Popen | None = None
         self._encerrar = threading.Event()
         self.ativa = False
@@ -75,8 +76,9 @@ class Escuta:
         self._chamar("/ouvindo", {"ligado": True})
         arquivo = dados() / "escuta.wav"
         arquivo.unlink(missing_ok=True)
-        self._proc = subprocess.Popen(["pw-record", "--rate", str(TAXA), "--channels", "1", "--format", "s16",
-                                       str(arquivo)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        comando = self._comando or ["pw-record", "--rate", str(TAXA), "--channels", "1", "--format", "s16",
+                                    str(arquivo)]
+        self._proc = subprocess.Popen(comando, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         threading.Thread(target=self._acompanhar, args=(arquivo,), daemon=True).start()
 
     def encerrar(self) -> None:
@@ -106,16 +108,19 @@ class Escuta:
             nivel = rms(novo)
             self._ao_nivel(nivel)
             resultado = detector.alimentar(nivel, time.time() - inicio)
-        self._parar_gravacao()
         texto = None
-        if resultado == "fim":
-            duracao = max(0, (arquivo.stat().st_size - (offset or 44))) / BYTES_POR_SEGUNDO + 0.1
-            resposta = self._chamar("/transcrever", {"caminho": str(arquivo)}, timeout=30.0)
-            if resposta:
-                texto = transcricao_util(resposta.get("texto", ""), max(duracao, time.time() - inicio))
-        self._chamar("/ouvindo", {"ligado": False})
-        self.ativa = False
-        self._ao_fim(texto)
+        try:
+            self._parar_gravacao()
+            if resultado == "fim" and offset is not None and arquivo.exists():
+                duracao = max(0, arquivo.stat().st_size - offset) / BYTES_POR_SEGUNDO
+                resposta = self._chamar("/transcrever", {"caminho": str(arquivo)}, timeout=30.0)
+                if resposta:
+                    texto = transcricao_util(resposta.get("texto", ""), duracao)
+        finally:
+            # Sempre libera a voz (pausada enquanto ouvia) e encerra, mesmo se a gravação falhou.
+            self._chamar("/ouvindo", {"ligado": False})
+            self.ativa = False
+            self._ao_fim(texto)
 
     def _parar_gravacao(self) -> None:
         if self._proc and self._proc.poll() is None:
