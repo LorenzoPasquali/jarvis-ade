@@ -151,8 +151,8 @@ class Cerebro:
     def _ao_fim_escuta(self, texto: str | None) -> None:
         if texto:
             self.mensagem_usuario(texto, falada=True)
-        elif not self.claude.ocupado:
-            self._definir_estado("ocioso")
+        else:
+            self._definir_estado("pensando" if self.claude.ocupado else "ocioso")
 
     # ---------- saída do Claude ----------
 
@@ -298,7 +298,7 @@ class Cerebro:
         if self.bloqueada():
             self._estava_bloqueada = True
             return
-        if self.claude.ocupado:
+        if self.claude.ocupado or self.escuta.ativa:  # não começa turno com o senhor falando
             return
         if self._estava_bloqueada:
             self._estava_bloqueada = False

@@ -255,3 +255,24 @@ def test_mensagens_simultaneas_geram_um_turno_so(dados_tmp):
     [t.start() for t in threads]
     [t.join() for t in threads]
     assert len(claude.enviados) == 1 and len(c._fila_usuario) == 4
+
+
+def test_eventos_esperam_o_senhor_terminar_de_falar(cerebro_falso):
+    c, claude = cerebro_falso
+    c.escuta.ativa = True
+    eventos.anexar(ev("terminou"))
+    c.laco_uma_vez()
+    assert claude.enviados == []
+    c.escuta.ativa = False
+    c.laco_uma_vez()
+    assert claude.enviados[0].startswith("[eventos]")
+
+
+def test_escuta_vazia_com_claude_ocupado_nao_deixa_ouvindo(cerebro_falso):
+    c, claude = cerebro_falso
+    publicados = []
+    c.publicar = publicados.append
+    claude.ocupado = True
+    c._ao_fim_escuta(None)
+    estados = [p["valor"] for p in publicados if p["tipo"] == "estado"]
+    assert estados and estados[-1] == "pensando"
