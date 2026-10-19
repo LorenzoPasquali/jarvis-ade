@@ -100,14 +100,13 @@ def _enviar(args: argparse.Namespace) -> int:
         if args.origem == "voz":
             from jarvis import pendencias
 
-            if args.texto is None:
-                print("Ordem falada precisa de --texto.")
-                return 1
             alvo = destino.projeto or destino.caminho
-            p = pendencias.criar("enviar", f"Para **{alvo}**: «{args.texto}»",
+            o_que = f"«{args.texto}»" if args.texto is not None else f"responder a opção «{args.tecla}»"
+            p = pendencias.criar("enviar", f"Para **{alvo}**: {o_que}",
                                  {"terminal": destino.terminal, "pane_key": destino.pane_key,
-                                  "projeto": destino.projeto, "caminho": destino.caminho, "texto": args.texto})
-            print(f"Aguardando confirmação do senhor (pendência {p['id']}): enviar a {alvo}: «{args.texto}»")
+                                  "projeto": destino.projeto, "caminho": destino.caminho, "texto": args.texto,
+                                  "tecla": args.tecla})
+            print(f"Aguardando confirmação do senhor (pendência {p['id']}): enviar a {alvo}: {o_que}")
             return 0
         enviar.enviar(destino, texto=args.texto, tecla=args.tecla, origem=args.origem, motivo=args.motivo,
                       confirmado=False)
@@ -180,6 +179,8 @@ def _lancar(args: argparse.Namespace) -> int:
             return 1
         if args.origem == "voz":
             alvo = plano.get("projeto") or plano.get("caminho")
+            if plano.get("worktree") and plano["worktree"] != alvo:
+                alvo = f"{alvo} ({plano['worktree']})"
             verbo = "Mandar ao agente de" if plano["acao"] == "enviar" else "Abrir um agente em"
             p = pendencias.criar("lancar", f"{verbo} **{alvo}**: «{args.tarefa}»", plano)
             print(f"Aguardando confirmação do senhor (pendência {p['id']}): {verbo.lower()} {alvo}.")

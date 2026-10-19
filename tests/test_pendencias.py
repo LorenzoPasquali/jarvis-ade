@@ -78,3 +78,17 @@ def test_cli_confirmar_e_listar(dados_tmp, regras_tmp, capsys):
     assert cli.main(["confirmar", str(p["id"])]) == 0
     assert "- x" in regras_tmp.read_text()
     assert cli.main(["confirmar", str(p["id"])]) == 1
+
+
+def test_tecla_por_voz_vira_pendencia_e_confirma(dados_tmp, capsys, monkeypatch):
+    from jarvis import enviar
+    monkeypatch.setattr(orca, "agentes", lambda: [ag("S", "permission", projeto="app-analise-saude")])
+    monkeypatch.setattr(orca, "terminais", lambda: {"S": Terminal("term_s", "S", "/git/app-analise-saude", True)})
+    assert cli.main(["enviar", "--projeto", "app-analise-saude", "--tecla", "1", "--origem", "voz"]) == 0
+    p = pendencias.listar()[0]
+    assert p["dados"]["tecla"] == "1" and "opção" in p["descricao"]
+    chamadas = []
+    monkeypatch.setattr(enviar, "_estado_no_orca", lambda pane: "permission")
+    monkeypatch.setattr(orca, "executar", lambda args, **k: chamadas.append(args) or {})
+    feita = pendencias.confirmar(p["id"])
+    assert feita["estado"] == "executada" and chamadas[0][-1] == "1" and "--enter" not in chamadas[0]

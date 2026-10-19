@@ -105,7 +105,9 @@ def _validar_estado(estado: str | None, texto: str | None) -> str | None:
 
 
 def enviar(destino: Destino, *, texto: str | None, tecla: str | None, origem: str, motivo: str,
-           confirmado: bool, executar=orca.executar, estado_atual=_estado_no_orca) -> dict:
+           confirmado: bool, executar=None, estado_atual=None) -> dict:
+    executar = executar or orca.executar
+    estado_atual = estado_atual or _estado_no_orca
     problema = _validar(texto, tecla, origem, motivo, confirmado) or _validar_estado(estado_atual(destino.pane_key),
                                                                                       texto)
     if problema:

@@ -38,3 +38,16 @@ def test_lancamento_usa_orca_agent_launch(dados_tmp):
     assert chamadas[0] == ["agent", "launch", "--agent", "claude", "--worktree", "path:/git/dailytracker",
                            "--prompt", "rodar testes"]
     assert '"tipo": "lancar"' in (dados_tmp / "acoes.jsonl").read_text()
+
+
+def test_planejar_ambiguo_com_duas_sessoes_paradas():
+    agentes = [ag("D1", "done", projeto="dailytracker", worktree="principal"),
+               ag("D2", "waiting", projeto="dailytracker", worktree="feature-x")]
+    with pytest.raises(ValueError) as e:
+        lancar.planejar("dailytracker", "x", agentes, REPOS)
+    assert "principal" in str(e.value) and "feature-x" in str(e.value)
+
+
+def test_plano_de_envio_mostra_o_worktree():
+    plano = lancar.planejar("dailytracker", "x", [ag("D", "done", projeto="dailytracker", worktree="feature-x")], REPOS)
+    assert plano["worktree"] == "feature-x"

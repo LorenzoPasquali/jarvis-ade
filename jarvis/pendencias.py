@@ -109,8 +109,8 @@ def _executar(pendencia: dict) -> str:
 
         destino = enviar.Destino(acao["terminal"], acao.get("pane_key"), acao.get("projeto", ""),
                                  acao.get("caminho", ""))
-        enviar.enviar(destino, texto=acao["texto"], tecla=None, origem="voz", motivo="confirmado pelo senhor",
-                      confirmado=True)
+        enviar.enviar(destino, texto=acao.get("texto"), tecla=acao.get("tecla"), origem="voz",
+                      motivo="confirmado pelo senhor", confirmado=True)
         return f"Enviado para {destino.projeto or destino.caminho}."
     from jarvis import lancar
 

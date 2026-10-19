@@ -28,9 +28,14 @@ def planejar(projeto: str, tarefa: str, agentes: list[Agente], repos: list[dict]
     repo = _repo_do_projeto(projeto, repos)
     nome = repo.get("displayName") or Path(repo["path"]).name
     sessoes = [a for a in agentes if a.caminho == repo["path"] or a.projeto == nome]
-    parada = next((a for a in sessoes if a.estado in PARADOS), None)
-    if parada:
-        return {"acao": "enviar", "pane_key": parada.pane_key, "projeto": nome, "tarefa": tarefa}
+    paradas = [a for a in sessoes if a.estado in PARADOS]
+    if len(paradas) > 1:
+        opcoes = ", ".join(f"{a.worktree} ({ESTADOS.get(a.estado, a.estado)})" for a in paradas)
+        raise ValueError(f"Há mais de uma sessão parada em {nome}: {opcoes}. Diga em qual.")
+    if paradas:
+        parada = paradas[0]
+        return {"acao": "enviar", "pane_key": parada.pane_key, "projeto": nome, "worktree": parada.worktree,
+                "tarefa": tarefa}
     if sessoes:
         rotulo = ESTADOS.get(sessoes[0].estado, sessoes[0].estado)
         return {"acao": "perguntar",
