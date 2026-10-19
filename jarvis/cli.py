@@ -90,8 +90,20 @@ def _enviar(args: argparse.Namespace) -> int:
     try:
         destino = enviar.resolver_destino(args.projeto, args.terminal, orca.agentes(), orca.terminais(),
                                           sessao.ler())
+        if args.origem == "voz":
+            from jarvis import pendencias
+
+            if args.texto is None:
+                print("Ordem falada precisa de --texto.")
+                return 1
+            alvo = destino.projeto or destino.caminho
+            p = pendencias.criar("enviar", f"Para **{alvo}**: «{args.texto}»",
+                                 {"terminal": destino.terminal, "pane_key": destino.pane_key,
+                                  "projeto": destino.projeto, "caminho": destino.caminho, "texto": args.texto})
+            print(f"Aguardando confirmação do senhor (pendência {p['id']}): enviar a {alvo}: «{args.texto}»")
+            return 0
         enviar.enviar(destino, texto=args.texto, tecla=args.tecla, origem=args.origem, motivo=args.motivo,
-                      confirmado=args.confirmado)
+                      confirmado=False)
     except enviar.EnvioRecusado as recusa:
         print(recusa)
         return 1
@@ -149,6 +161,70 @@ def _hud(args: argparse.Namespace) -> int:
     return hud_cli.hud(demo=args.demo)
 
 
+def _lancar(args: argparse.Namespace) -> int:
+    from jarvis import lancar, orca, pendencias
+    from jarvis.orca import OrcaErro
+
+    try:
+        plano = lancar.planejar(args.projeto, args.tarefa, orca.agentes(), orca.executar(["repo", "list"])["repos"])
+        if plano["acao"] == "perguntar":
+            print(plano["motivo"])
+            return 1
+        if args.origem == "voz":
+            alvo = plano.get("projeto") or plano.get("caminho")
+            verbo = "Mandar ao agente de" if plano["acao"] == "enviar" else "Abrir um agente em"
+            p = pendencias.criar("lancar", f"{verbo} **{alvo}**: «{args.tarefa}»", plano)
+            print(f"Aguardando confirmação do senhor (pendência {p['id']}): {verbo.lower()} {alvo}.")
+            return 0
+        print(lancar.executar_plano(plano, origem="texto"))
+    except (ValueError, OrcaErro) as erro:
+        print(erro)
+        return 1
+    return 0
+
+
+def _regra(args: argparse.Namespace) -> int:
+    from jarvis import pendencias
+
+    if args.acao == "adicionar":
+        texto = " ".join(args.texto).strip()
+        if not texto:
+            print("Diga a regra.")
+            return 1
+        p = pendencias.criar("regra", f"Nova regra: «{texto}»", {"texto": texto})
+        print(f"Aguardando confirmação do senhor (pendência {p['id']}): nova regra «{texto}».")
+        return 0
+    try:
+        print(pendencias.remover_regra(int(args.texto[0])))
+    except (ValueError, IndexError):
+        print("Informe o número da regra a remover.")
+        return 1
+    return 0
+
+
+def _decidir(args: argparse.Namespace) -> int:
+    from jarvis import pendencias
+
+    try:
+        p = pendencias.confirmar(args.id) if args.comando == "confirmar" else pendencias.recusar(args.id)
+    except ValueError as erro:
+        print(erro)
+        return 1
+    print(p["resultado"] or f"Pendência {p['id']}: {p['estado']}.")
+    return 0 if p["estado"] in ("executada", "recusada") else 1
+
+
+def _pendencias(_: argparse.Namespace) -> int:
+    from jarvis import pendencias
+
+    abertas = pendencias.listar()
+    for p in abertas:
+        print(f"{p['id']}: {p['descricao']}")
+    if not abertas:
+        print("Nenhuma pendência aberta.")
+    return 0
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="jarvis", description="Jarvis: orquestrador das sessões do Orca.")
     subs = parser.add_subparsers(dest="comando")
@@ -178,7 +254,16 @@ def _parser() -> argparse.ArgumentParser:
     conteudo.add_argument("--tecla", help="tecla/opção enviada sem Enter (ex.: 1)")
     p.add_argument("--origem", required=True, choices=["voz", "texto", "regra"])
     p.add_argument("--motivo", default="", help="ordem do usuário ou regra aplicada")
-    p.add_argument("--confirmado", action="store_true", help="o usuário confirmou a ordem falada")
+    p = sub("lancar", "dá uma tarefa ao agente de um projeto (reaproveita ou abre)", _lancar)
+    p.add_argument("--projeto", required=True)
+    p.add_argument("--tarefa", required=True)
+    p.add_argument("--origem", required=True, choices=["voz", "texto"])
+    p = sub("regra", "regras do senhor: adicionar (pede confirmação) ou remover", _regra)
+    p.add_argument("acao", choices=["adicionar", "remover"])
+    p.add_argument("texto", nargs="+")
+    sub("confirmar", "executa uma pendência aprovada pelo senhor", _decidir).add_argument("id", type=int)
+    sub("recusar", "descarta uma pendência", _decidir).add_argument("id", type=int)
+    sub("pendencias", "pendências aguardando o senhor", _pendencias)
     sub("vigia", "loop que registra mudanças das sessões", _vigia)
     sub("hook-fala", "hook Stop: fala a resposta do Jarvis", _hook_fala)
     sub("ouvir", "aperta-e-fala: começa ou termina a gravação", _ouvir)

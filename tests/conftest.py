@@ -26,3 +26,13 @@ def ag(pane: str, estado: str, projeto: str | None = None, mensagem: str = "", w
     return Agente(pane_key=pane, projeto=projeto, worktree=worktree or projeto, caminho=f"/git/{projeto}",
                   agente="claude", estado=estado, ultima_mensagem=mensagem, prompt="",
                   estado_desde_ms=1792422000000, ferramenta=None)
+
+
+@pytest.fixture
+def regras_tmp(tmp_path, monkeypatch):
+    from jarvis import pendencias
+
+    copia = tmp_path / "regras.md"
+    copia.write_text((RAIZ / "sessao/regras.md").read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setattr(pendencias, "ARQUIVO_REGRAS", copia)
+    return copia
