@@ -1,0 +1,12 @@
+[Unit]
+Description=Jarvis: servidor de voz local (OmniVoice + Whisper)
+After=pipewire.service
+
+[Service]
+ExecStart=/git/FERRAMENTAS-LOCAL/OmniVoice/.venv/bin/python /git/jarvis/voz/servidor.py
+Environment=HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONUNBUFFERED=1
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
