@@ -6,6 +6,7 @@ Só stdlib: também é importado pelo servidor de voz, que roda no venv do OmniV
 import re
 
 MARCADOR = "🔊"
+SILENCIO = "🔇"
 _ABREVIACOES = {"sr", "sra", "srta", "dr", "dra", "prof", "profa", "etc", "ex", "obs", "nº", "n"}
 _MIN_FRASE = 25
 
@@ -60,6 +61,8 @@ def _cortar(texto: str, max_chars: int) -> str:
 
 
 def extrair_fala(mensagem: str, max_chars: int = 400) -> str:
+    if any(linha.strip().startswith(SILENCIO) for linha in mensagem.splitlines()):
+        return ""
     marcadas = [linha.strip()[len(MARCADOR):] for linha in mensagem.splitlines()
                 if linha.strip().startswith(MARCADOR)]
     if marcadas:

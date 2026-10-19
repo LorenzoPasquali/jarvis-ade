@@ -78,6 +78,17 @@ def test_mudo_ignora_fala():
     assert toc.tocados == []
 
 
+def test_ouvindo_segura_a_fala_ate_liberar():
+    toc = TocadorFalso()
+    loc = Locutor(MotorFalso(), toc)
+    loc.ouvindo(True)
+    loc.falar("Resposta que chegou durante a gravação.")
+    time.sleep(0.4)
+    assert toc.tocados == []
+    loc.ouvindo(False)
+    esperar(lambda: len(toc.tocados) == 1)
+
+
 @pytest.fixture
 def servidor_falso():
     loc = Locutor(MotorFalso(), TocadorFalso())
@@ -104,5 +115,6 @@ def test_http_rotas(servidor_falso):
     assert post(servidor_falso, "/transcrever", {"caminho": "/tmp/x.wav"}) == (200, {"texto": "texto falso"})
     assert post(servidor_falso, "/mudo", {"ligado": True})[0] == 200
     assert post(servidor_falso, "/parar", {})[0] == 200
+    assert post(servidor_falso, "/ouvindo", {"ligado": False})[0] == 200
     assert post(servidor_falso, "/falar", b"nao-json")[0] == 400
     assert post(servidor_falso, "/inexistente", {})[0] == 404

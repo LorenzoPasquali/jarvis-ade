@@ -32,6 +32,7 @@ class Locutor:
     def __init__(self, motor, tocador):
         self.motor, self.tocador = motor, tocador
         self.mudo = False
+        self._ouvindo_ate = 0.0
         self._geracao = 0
         self._falando = False
         self._frases: queue.Queue = queue.Queue()
@@ -56,6 +57,10 @@ class Locutor:
                     break
         self.tocador.parar()
 
+    def ouvindo(self, ligado: bool, limite_s: float = 120.0) -> None:
+        """Segura a reprodução enquanto o usuário grava (com limite, caso o fim nunca chegue)."""
+        self._ouvindo_ate = time.time() + limite_s if ligado else 0.0
+
     def estado(self) -> dict:
         return {"falando": self._falando, "fila": self._frases.qsize() + self._audios.qsize(), "mudo": self.mudo}
 
@@ -75,6 +80,8 @@ class Locutor:
     def _tocar(self) -> None:
         while True:
             geracao, audio = self._audios.get()
+            while time.time() < self._ouvindo_ate and geracao == self._geracao:
+                time.sleep(0.05)
             if geracao != self._geracao:
                 continue
             self._falando = True
@@ -187,6 +194,9 @@ def criar_servidor(locutor: Locutor, transcritor, porta: int) -> ThreadingHTTPSe
                 if locutor.mudo:
                     locutor.parar()
                 self._responder(200, {"ok": True, "mudo": locutor.mudo})
+            elif self.path == "/ouvindo":
+                locutor.ouvindo(bool(corpo.get("ligado")))
+                self._responder(200, {"ok": True})
             elif self.path == "/transcrever":
                 try:
                     self._responder(200, {"texto": transcritor.transcrever(str(corpo.get("caminho") or ""))})

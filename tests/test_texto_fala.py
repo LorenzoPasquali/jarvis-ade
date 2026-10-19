@@ -54,3 +54,7 @@ def test_juncao_de_frase_curta_nao_passa_do_limite():
     longa = "palavra " * 26 + "fim."
     partes = dividir_frases("Sim, senhor. " + longa.strip(), max_chars=220)
     assert all(len(p) <= 220 for p in partes)
+
+
+def test_marcador_de_silencio():
+    assert extrair_fala("Rearmei o monitor.\n🔇") == ""

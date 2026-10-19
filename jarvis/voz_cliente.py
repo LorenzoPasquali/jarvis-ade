@@ -21,6 +21,7 @@ from jarvis.texto_fala import extrair_fala
 _ALUCINACOES = ["legendas pela comunidade amara.org", "obrigado", "obrigada", "obrigado por assistir",
                 "tchau", "inscreva-se no canal"]
 _DURACAO_MINIMA = 0.5
+_INTERVALO_AVISO_VOZ = 600
 
 
 def chamar(rota: str, corpo: dict | None = None, timeout: float = 3.0) -> dict | None:
@@ -38,12 +39,25 @@ def _log_hook(mensagem: str) -> None:
         f.write(f"{datetime.now().isoformat(timespec='seconds')} {mensagem}\n")
 
 
-def hook_fala(entrada_json: str, chamar=chamar) -> None:
+def _avisar_voz_caiu(notificar) -> None:
+    _log_hook("servidor de voz indisponível")
+    marca = dados() / "voz-aviso"
+    try:
+        ultimo = float(marca.read_text())
+    except (FileNotFoundError, ValueError):
+        ultimo = 0.0
+    if time.time() - ultimo >= _INTERVALO_AVISO_VOZ:
+        marca.write_text(str(time.time()))
+        notificar("Voz do Jarvis indisponível; respostas só em texto.")
+
+
+def hook_fala(entrada_json: str, chamar=chamar, notificar=None) -> None:
+    notificar = notificar or notify_send
     try:
         mensagem = json.loads(entrada_json).get("last_assistant_message") or ""
         fala = extrair_fala(mensagem)
-        if fala:
-            chamar("/falar", {"texto": fala})
+        if fala and chamar("/falar", {"texto": fala}) is None:
+            _avisar_voz_caiu(notificar)
     except Exception:
         try:
             _log_hook(traceback.format_exc())
@@ -105,7 +119,20 @@ def notify_send(mensagem: str) -> None:
         pass
 
 
-def ouvir(gravador, chamar=chamar, executar=orca.executar, notificar=notify_send) -> str:
+def _sessao_jarvis_viva(obter_agentes) -> tuple[dict | None, str | None]:
+    """Registro da sessão Jarvis e o estado do agente nela, se ainda for uma sessão viva."""
+    registro = sessao.ler()
+    if not registro:
+        return None, None
+    try:
+        agente = next((a for a in obter_agentes() if a.pane_key == registro["pane_key"]), None)
+    except OrcaErro:
+        return None, None
+    return (registro, agente.estado) if agente else (None, None)
+
+
+def ouvir(gravador, chamar=chamar, executar=orca.executar, notificar=notify_send,
+          obter_agentes=orca.agentes) -> str:
     estado_ptt = dados() / "ptt.json"
     try:
         gravando = json.loads(estado_ptt.read_text())
@@ -116,6 +143,7 @@ def ouvir(gravador, chamar=chamar, executar=orca.executar, notificar=notify_send
         if chamar("/parar") is None:
             notificar("Servidor de voz indisponível.")
             return "sem_voz"
+        chamar("/ouvindo", {"ligado": True})
         pid = gravador.iniciar(dados() / "ptt.wav")
         estado_ptt.write_text(json.dumps({"pid": pid, "inicio": time.time()}))
         notificar("Jarvis ouvindo…")
@@ -123,7 +151,10 @@ def ouvir(gravador, chamar=chamar, executar=orca.executar, notificar=notify_send
 
     duracao = gravador.encerrar(gravando["pid"])
     estado_ptt.unlink(missing_ok=True)
-    resposta = chamar("/transcrever", {"caminho": str(dados() / "ptt.wav")}, timeout=30.0)
+    try:
+        resposta = chamar("/transcrever", {"caminho": str(dados() / "ptt.wav")}, timeout=30.0)
+    finally:
+        chamar("/ouvindo", {"ligado": False})
     if resposta is None:
         notificar("Servidor de voz indisponível.")
         return "sem_voz"
@@ -131,10 +162,13 @@ def ouvir(gravador, chamar=chamar, executar=orca.executar, notificar=notify_send
     if texto is None:
         notificar("Não entendi, senhor.")
         return "descartado"
-    registro = sessao.ler()
+    registro, estado = _sessao_jarvis_viva(obter_agentes)
     if not registro:
         notificar("Sessão do Jarvis não está aberta.")
         return "sem_sessao"
+    if estado == "permission":
+        notificar("O Jarvis está esperando uma permissão na tela dele; responda lá primeiro.")
+        return "jarvis_ocupado"
     try:
         executar(["terminal", "send", "--terminal", registro["terminal"], "--text", f"[voz] {texto}", "--enter"])
     except OrcaErro:
