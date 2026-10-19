@@ -1,0 +1,72 @@
+import json
+import os
+from pathlib import Path
+
+import pytest
+
+from conftest import RAIZ
+from jarvis import lancador, sessao
+from jarvis.lancador import iniciar
+
+
+def settings() -> dict:
+    return json.loads((RAIZ / "sessao/jarvis-settings.json").read_text())
+
+
+def test_settings_validos():
+    s = settings()
+    assert "Bash(orca terminal send:*)" in s["permissions"]["deny"]
+    assert "Bash(jarvis enviar:*)" in s["permissions"]["allow"] and "Monitor" in s["permissions"]["allow"]
+    assert s["permissions"]["additionalDirectories"] == ["/git"]
+    gancho = s["hooks"]["Stop"][0]["hooks"][0]
+    assert gancho.get("async", False) is False  # async se perde quando o claude encerra
+    executavel = gancho["command"].split()[0]
+    assert executavel == str(RAIZ / "bin/jarvis") and os.access(executavel, os.X_OK)
+
+
+def test_settings_desligam_plugins_que_mudam_o_tom():
+    plugins = settings()["enabledPlugins"]
+    assert plugins["caveman@caveman"] is False and plugins["superpowers@claude-plugins-official"] is False
+
+
+def test_persona_tem_regras_chave():
+    p = (RAIZ / "sessao/CLAUDE.md").read_text()
+    for trecho in ["🔊", "[voz]", "--confirmado", "jarvis eventos --seguir", "jarvis eventos --pendentes",
+                   "regras.md", "senhor", "geopolítica", "jarvis clima", "orca search", "jarvis calar",
+                   "[sistema] Sessão do Jarvis iniciada."]:
+        assert trecho in p, trecho
+
+
+def test_regras_existe_sem_regra_ativa():
+    texto = (RAIZ / "sessao/regras.md").read_text()
+    assert "# Regras" in texto
+    assert not [linha for linha in texto.splitlines() if linha.startswith("- ")]
+
+
+def test_nao_ha_persona_na_raiz():
+    raiz_settings = RAIZ / ".claude/settings.json"
+    assert not raiz_settings.exists() or "hook-fala" not in raiz_settings.read_text()
+    assert not Path("/git/CLAUDE.md").exists()
+    assert not (RAIZ / "CLAUDE.md").exists() or "🔊" not in (RAIZ / "CLAUDE.md").read_text()
+
+
+def test_iniciar_fora_do_orca_recusa(capsys):
+    assert iniciar(env={}, execvpe=lambda *a: pytest.fail("não deveria executar")) == 1
+    assert "terminal do Orca" in capsys.readouterr().out
+
+
+def test_iniciar_registra_e_executa_claude(dados_tmp, monkeypatch):
+    monkeypatch.setattr(lancador, "garantir_servicos", lambda: None)
+    monkeypatch.setattr(lancador.os, "chdir", lambda caminho: None)
+    chamadas = []
+    iniciar(env={"ORCA_PANE_KEY": "J", "ORCA_TERMINAL_HANDLE": "term_j", "PATH": "/usr/bin"},
+            execvpe=lambda prog, args, env: chamadas.append((prog, args, env)))
+    prog, args, env = chamadas[0]
+    assert prog == "claude" and args[args.index("--settings") + 1] == str(RAIZ / "sessao/jarvis-settings.json")
+    assert args[-1] == "[sistema] Sessão do Jarvis iniciada."
+    assert env["PATH"].startswith(str(RAIZ / "bin")) and sessao.ler()["terminal"] == "term_j"
+
+
+def test_unidades_systemd():
+    vigia = (RAIZ / "systemd/jarvis-vigia.service").read_text()
+    assert "ExecStart=/usr/bin/python3 /git/jarvis/bin/jarvis vigia" in vigia and "Restart=always" in vigia

@@ -1,0 +1,11 @@
+[Unit]
+Description=Jarvis: vigia das sessões do Orca
+
+[Service]
+ExecStart=/usr/bin/python3 /git/jarvis/bin/jarvis vigia
+Environment=PYTHONUNBUFFERED=1 PATH=%h/.config/orca/linux-orca-cli-shim:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

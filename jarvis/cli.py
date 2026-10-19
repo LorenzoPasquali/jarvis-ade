@@ -131,6 +131,18 @@ def _mudo(args: argparse.Namespace) -> int:
     return 0
 
 
+def _iniciar(_: argparse.Namespace) -> int:
+    from jarvis import lancador
+
+    return lancador.iniciar()
+
+
+def _instalar(_: argparse.Namespace) -> int:
+    from jarvis import lancador
+
+    return lancador.instalar()
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="jarvis", description="Jarvis: orquestrador das sessões do Orca.")
     subs = parser.add_subparsers(dest="comando")
@@ -140,7 +152,7 @@ def _parser() -> argparse.ArgumentParser:
         p.set_defaults(handler=handler)
         return p
 
-    sub("iniciar", "abre a sessão do Jarvis neste terminal do Orca (padrão)")
+    sub("iniciar", "abre a sessão do Jarvis neste terminal do Orca (padrão)", _iniciar)
     sub("status", "estado das sessões de agentes no Orca", _status).add_argument("--json", action="store_true")
     p = sub("eventos", "eventos registrados pelo vigia", _eventos)
     modo = p.add_mutually_exclusive_group()
@@ -164,7 +176,7 @@ def _parser() -> argparse.ArgumentParser:
     sub("ouvir", "aperta-e-fala: começa ou termina a gravação", _ouvir)
     sub("calar", "interrompe a fala", _calar)
     sub("mudo", "liga ou desliga o modo mudo", _mudo).add_argument("estado", choices=["on", "off"])
-    sub("instalar", "instala serviços, atalhos e o comando jarvis")
+    sub("instalar", "instala serviços, atalhos e o comando jarvis", _instalar)
     return parser
 
 
