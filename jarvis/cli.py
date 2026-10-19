@@ -83,6 +83,25 @@ def _clima(_: argparse.Namespace) -> int:
     return 0
 
 
+def _enviar(args: argparse.Namespace) -> int:
+    from jarvis import enviar, orca, sessao
+    from jarvis.orca import OrcaErro
+
+    try:
+        destino = enviar.resolver_destino(args.projeto, args.terminal, orca.agentes(), orca.terminais(),
+                                          sessao.ler())
+        enviar.enviar(destino, texto=args.texto, tecla=args.tecla, origem=args.origem, motivo=args.motivo,
+                      confirmado=args.confirmado)
+    except enviar.EnvioRecusado as recusa:
+        print(recusa)
+        return 1
+    except OrcaErro as erro:
+        print(f"Falhou ao enviar: {erro.mensagem} ({erro.codigo})")
+        return 1
+    print(f"Enviado para {destino.projeto or destino.caminho} ({destino.terminal}).")
+    return 0
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="jarvis", description="Jarvis: orquestrador das sessões do Orca.")
     subs = parser.add_subparsers(dest="comando")
@@ -101,7 +120,16 @@ def _parser() -> argparse.ArgumentParser:
     sub("historico", "o que aconteceu nos projetos num período", _historico).add_argument(
         "--desde", default="1d", help="1d, 7d, 12h ou data ISO (padrão 1d)")
     sub("clima", "clima de agora em São Paulo", _clima)
-    sub("enviar", "envia uma mensagem a um agente e registra a ação")
+    p = sub("enviar", "envia uma mensagem a um agente e registra a ação", _enviar)
+    alvo = p.add_mutually_exclusive_group(required=True)
+    alvo.add_argument("--projeto", help="nome do projeto ou worktree no Orca")
+    alvo.add_argument("--terminal", help="handle do terminal (term_...)")
+    conteudo = p.add_mutually_exclusive_group(required=True)
+    conteudo.add_argument("--texto", help="mensagem enviada com Enter")
+    conteudo.add_argument("--tecla", help="tecla/opção enviada sem Enter (ex.: 1)")
+    p.add_argument("--origem", required=True, choices=["voz", "texto", "regra"])
+    p.add_argument("--motivo", default="", help="ordem do usuário ou regra aplicada")
+    p.add_argument("--confirmado", action="store_true", help="o usuário confirmou a ordem falada")
     sub("vigia", "loop que registra mudanças das sessões", _vigia)
     sub("hook-fala", "hook Stop: fala a resposta do Jarvis")
     sub("ouvir", "aperta-e-fala: começa ou termina a gravação")
