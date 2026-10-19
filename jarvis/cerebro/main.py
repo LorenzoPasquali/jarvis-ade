@@ -39,6 +39,7 @@ class Cerebro:
         self._chamar_voz = chamar_voz
         self._ouvintes: list[queue.Queue] = []
         self._trava = threading.Lock()
+        self._despacho = threading.RLock()  # um turno de cada vez: entrada, laço e fim de resposta
         self._fila_usuario: deque[tuple[str, str]] = deque()
         self._fila_eventos = FilaEventos(dados() / "cerebro-cursor")
         self._estava_bloqueada = False
@@ -119,10 +120,11 @@ class Cerebro:
         self._para_claude(f"[voz] {texto}" if falada else texto, "voz" if falada else "texto")
 
     def _para_claude(self, texto: str, tipo: str) -> None:
-        if self.claude.ocupado or self._fila_usuario:
-            self._fila_usuario.append((texto, tipo))
-        else:
-            self._enviar_claude(texto, tipo)
+        with self._despacho:
+            if self.claude.ocupado or self._fila_usuario:
+                self._fila_usuario.append((texto, tipo))
+            else:
+                self._enviar_claude(texto, tipo)
 
     def _enviar_claude(self, texto: str, tipo: str) -> None:
         turno.registrar(tipo)
@@ -172,20 +174,24 @@ class Cerebro:
             if interno.get("type") == "content_block_delta" and delta.get("type") == "text_delta":
                 self._acrescentar(delta.get("text", ""))
         elif tipo == "result":
-            turno.encerrar()
-            texto = evento.get("result") or self._resposta
-            self._separador.fim(texto)
-            if texto.strip():
-                self._registrar("jarvis", texto)
-            self.publicar({"tipo": "resposta_fim", "texto": texto})
-            if self._estado != "ouvindo":
-                self._definir_estado("ocioso")
-            if self._pendencia_no_turno and self.janela_aberta:
-                threading.Thread(target=self._reabrir_escuta, daemon=True).start()
+            with self._despacho:
+                self._fim_do_turno(evento)
         elif tipo == "jarvis_reiniciando":
             self._definir_estado("desconectado")
         elif tipo == "system" and evento.get("subtype") == "init" and self._estado == "desconectado":
             self._definir_estado("ocioso")
+
+    def _fim_do_turno(self, evento: dict) -> None:
+        turno.encerrar()
+        texto = evento.get("result") or self._resposta
+        self._separador.fim(texto)
+        if texto.strip():
+            self._registrar("jarvis", texto)
+        self.publicar({"tipo": "resposta_fim", "texto": texto})
+        if self._estado != "ouvindo":
+            self._definir_estado("ocioso")
+        if self._pendencia_no_turno and self.janela_aberta:
+            threading.Thread(target=self._reabrir_escuta, daemon=True).start()
 
     def _acrescentar(self, texto: str) -> None:
         self._resposta += texto
@@ -285,6 +291,10 @@ class Cerebro:
         self._atualizar_sessoes()
         self._publicar_pendencias()
         self._fila_eventos.coletar()
+        with self._despacho:
+            self._despachar()
+
+    def _despachar(self) -> None:
         if self.bloqueada():
             self._estava_bloqueada = True
             return

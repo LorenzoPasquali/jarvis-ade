@@ -58,3 +58,20 @@ def test_comando_claude_tem_flags():
     mcp = json.loads(c[c.index("--mcp-config") + 1])
     assert mcp["mcpServers"]["jarvis"]["args"] == ["permissao-mcp"]
     assert c[c.index("--model") + 1] == "sonnet"
+
+
+def test_ocupado_so_libera_depois_de_tratar_o_resultado(tmp_path):
+    vistos = []
+    p = None
+
+    def ao_evento(e):
+        if e["type"] == "result":
+            vistos.append(p.ocupado)
+
+    p = ProcessoClaude([sys.executable, FALSO], tmp_path, os.environ.copy(), ao_evento, tmp_path / "s.json")
+    p.iniciar()
+    p.enviar("oi")
+    esperar(lambda: vistos)
+    assert vistos == [True]
+    esperar(lambda: not p.ocupado)
+    p.parar()

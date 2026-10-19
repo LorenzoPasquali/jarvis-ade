@@ -240,3 +240,18 @@ def test_cerebro_registra_o_tipo_de_cada_turno(cerebro_falso):
 def test_main_marca_o_ambiente_do_cerebro():
     import inspect
     assert '"JARVIS_CEREBRO": "1"' in inspect.getsource(cerebro_main.main)
+
+
+class ClaudeLento(ClaudeFalso):
+    def enviar(self, texto):
+        time.sleep(0.02)  # alarga a janela entre conferir "ocupado" e marcar
+        super().enviar(texto)
+
+
+def test_mensagens_simultaneas_geram_um_turno_so(dados_tmp):
+    claude = ClaudeLento()
+    c = Cerebro(claude=claude, falar=lambda t: True, bloqueada=lambda: False, chamar_voz=lambda *a, **k: {})
+    threads = [threading.Thread(target=c.mensagem_usuario, args=(f"m{i}", False)) for i in range(5)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert len(claude.enviados) == 1 and len(c._fila_usuario) == 4

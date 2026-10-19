@@ -82,9 +82,9 @@ class ProcessoClaude:
                 continue
             if evento.get("session_id") and evento.get("type") in ("system", "result"):
                 self._gravar_sessao(evento["session_id"])
-            if evento.get("type") == "result":
-                self.ocupado = False
             self._ao_evento(evento)
+            if evento.get("type") == "result":
+                self.ocupado = False  # só depois de o resultado ser tratado: evita começar outro turno no meio
         proc.wait()
         if self._parando:
             return
