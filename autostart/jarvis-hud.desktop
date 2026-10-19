@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Jarvis
+Comment=Janela do Jarvis (Super+J)
+Exec=/usr/bin/python3 /git/jarvis/hud/janela.py
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

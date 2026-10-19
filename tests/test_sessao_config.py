@@ -9,26 +9,6 @@ from jarvis import lancador, sessao
 from jarvis.lancador import iniciar
 
 
-def settings() -> dict:
-    return json.loads((RAIZ / "sessao/jarvis-settings.json").read_text())
-
-
-def test_settings_validos():
-    s = settings()
-    assert "Bash(orca terminal send:*)" in s["permissions"]["deny"]
-    assert "Bash(jarvis enviar:*)" in s["permissions"]["allow"] and "Monitor" in s["permissions"]["allow"]
-    assert s["permissions"]["additionalDirectories"] == ["/git"]
-    gancho = s["hooks"]["Stop"][0]["hooks"][0]
-    assert gancho.get("async", False) is False  # async se perde quando o claude encerra
-    executavel = gancho["command"].split()[0]
-    assert executavel == str(RAIZ / "bin/jarvis") and os.access(executavel, os.X_OK)
-
-
-def test_settings_desligam_plugins_que_mudam_o_tom():
-    plugins = settings()["enabledPlugins"]
-    assert plugins["caveman@caveman"] is False and plugins["superpowers@claude-plugins-official"] is False
-
-
 def test_persona_tem_regras_chave():
     p = (RAIZ / "sessao/CLAUDE.md").read_text()
     for trecho in ["🔊", "🔇", "[voz]", "[eventos]", "[sistema]", "jarvis confirmar", "jarvis lancar",
@@ -68,32 +48,42 @@ def test_nao_ha_persona_na_raiz():
     assert not (RAIZ / "CLAUDE.md").exists() or "🔊" not in (RAIZ / "CLAUDE.md").read_text()
 
 
-def test_iniciar_fora_do_orca_recusa(capsys):
-    assert iniciar(env={}, execvpe=lambda *a: pytest.fail("não deveria executar")) == 1
-    assert "terminal do Orca" in capsys.readouterr().out
-
-
-def test_iniciar_registra_e_executa_claude(dados_tmp, monkeypatch):
-    monkeypatch.setattr(lancador, "garantir_servicos", lambda: None)
-    monkeypatch.setattr(lancador.os, "chdir", lambda caminho: None)
-    chamadas = []
-    iniciar(env={"ORCA_PANE_KEY": "J", "ORCA_TERMINAL_HANDLE": "term_j", "PATH": "/usr/bin"},
-            execvpe=lambda prog, args, env: chamadas.append((prog, args, env)))
-    prog, args, env = chamadas[0]
-    assert prog == "claude" and args[args.index("--settings") + 1] == str(RAIZ / "sessao/jarvis-settings.json")
-    assert args[-1] == "[sistema] Sessão do Jarvis iniciada."
-    assert env["PATH"].startswith(str(RAIZ / "bin")) and sessao.ler()["terminal"] == "term_j"
-
-
 def test_unidades_systemd():
     vigia = (RAIZ / "systemd/jarvis-vigia.service").read_text()
     assert "ExecStart=/usr/bin/python3 /git/jarvis/bin/jarvis vigia" in vigia and "Restart=always" in vigia
 
 
-def test_permissoes_contra_injecao():
-    perm = settings()["permissions"]
-    assert "WebFetch" not in perm["allow"] and "WebSearch" in perm["allow"]
-    assert "Edit(//git/jarvis/sessao/regras.md)" in perm["ask"]
-    assert not [r for r in perm["allow"] if r.startswith("Edit(")]
-    for segredo in ["Read(//git/**/.env)", "Read(//git/**/.env.*)", "Read(~/.ssh/**)"]:
-        assert segredo in perm["deny"]
+
+
+def test_unidade_cerebro():
+    u = (RAIZ / "systemd/jarvis-cerebro.service").read_text()
+    assert "ExecStart=/usr/bin/python3 /git/jarvis/bin/jarvis cerebro" in u and "Restart=always" in u
+    assert "linux-orca-cli-shim" in u
+
+
+def test_autostart_hud():
+    d = (RAIZ / "autostart/jarvis-hud.desktop").read_text()
+    assert "hud/janela.py" in d and "X-GNOME-Autostart-enabled=true" in d
+
+
+def test_super_j_abre_hud():
+    assert lancador.ATALHOS["jarvis-ouvir"][1].endswith("jarvis hud")
+
+
+def test_sem_hook_de_fala_nem_aba_antiga():
+    assert not (RAIZ / "sessao/jarvis-settings.json").exists()
+    assert "Monitor" not in (RAIZ / "sessao/CLAUDE.md").read_text()
+
+
+def test_iniciar_agora_abre_a_janela(monkeypatch, capsys):
+    chamadas = []
+    monkeypatch.setattr("jarvis.hud_cli.hud", lambda demo=False: chamadas.append(demo) or 0)
+    assert iniciar(env={"ORCA_PANE_KEY": "J", "ORCA_TERMINAL_HANDLE": "term_j"}) == 0
+    assert chamadas == [False] and "app" in capsys.readouterr().out
+
+
+def test_jarvis_sem_argumentos_abre_a_janela(monkeypatch):
+    from jarvis import cli
+    chamadas = []
+    monkeypatch.setattr("jarvis.hud_cli.hud", lambda demo=False: chamadas.append(demo) or 0)
+    assert cli.main([]) == 0 and chamadas == [False]

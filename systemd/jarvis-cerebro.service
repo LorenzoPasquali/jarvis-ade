@@ -1,0 +1,12 @@
+[Unit]
+Description=Jarvis: cérebro sempre ligado (Claude headless, voz e janela)
+After=jarvis-voz.service jarvis-vigia.service
+
+[Service]
+ExecStart=/usr/bin/python3 /git/jarvis/bin/jarvis cerebro
+Environment=PYTHONUNBUFFERED=1 PATH=%h/.config/orca/linux-orca-cli-shim:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

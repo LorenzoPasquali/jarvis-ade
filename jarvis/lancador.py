@@ -6,16 +6,14 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from jarvis import sessao
 from jarvis.config import RAIZ
 
-SERVICOS = ("jarvis-voz", "jarvis-vigia")
-MENSAGEM_INICIAL = "[sistema] Sessão do Jarvis iniciada."
+SERVICOS = ("jarvis-voz", "jarvis-vigia", "jarvis-cerebro")
 _CHAVE_ATALHOS = "org.gnome.settings-daemon.plugins.media-keys"
 _ESQUEMA_ATALHO = "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding"
 _BASE_ATALHO = "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings"
 ATALHOS = {
-    "jarvis-ouvir": ("Jarvis: falar", f"{RAIZ / 'bin/jarvis'} ouvir", "<Super>j"),
+    "jarvis-ouvir": ("Jarvis: falar", f"{RAIZ / 'bin/jarvis'} hud", "<Super>j"),
     "jarvis-calar": ("Jarvis: silêncio", f"{RAIZ / 'bin/jarvis'} calar", "<Super><Shift>j"),
 }
 
@@ -24,27 +22,12 @@ def _systemctl(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["systemctl", "--user", *args], capture_output=True, text=True)
 
 
-def garantir_servicos() -> None:
-    for servico in SERVICOS:
-        if _systemctl("is-active", "--quiet", servico).returncode == 0:
-            continue
-        if _systemctl("start", servico).returncode != 0:
-            print(f"Aviso: o serviço {servico} não está rodando. Rode `jarvis instalar`.")
+def iniciar(env=os.environ) -> int:
+    """Compatibilidade: o Jarvis não roda mais numa aba do Orca; agora é o app (Super+J)."""
+    from jarvis import hud_cli
 
-
-def iniciar(env=os.environ, execvpe=os.execvpe) -> int:
-    pane, terminal = env.get("ORCA_PANE_KEY"), env.get("ORCA_TERMINAL_HANDLE")
-    if not pane or not terminal:
-        print("Abra o Jarvis num terminal do Orca.")
-        return 1
-    sessao.registrar(pane, terminal)
-    garantir_servicos()
-    novo_env = dict(env)
-    novo_env["PATH"] = f"{RAIZ / 'bin'}{os.pathsep}{env.get('PATH', '')}"
-    os.chdir(RAIZ / "sessao")
-    execvpe("claude", ["claude", "--settings", str(RAIZ / "sessao/jarvis-settings.json"), MENSAGEM_INICIAL],
-            novo_env)
-    return 0
+    print("O Jarvis agora é um app sempre ligado: Super+J abre a janela.")
+    return hud_cli.hud()
 
 
 def _instalar_atalhos() -> None:
@@ -70,12 +53,20 @@ def instalar() -> int:
         if _systemctl("enable", "--now", servico).returncode != 0:
             print(f"Falha ao ativar {servico}: veja `journalctl --user -u {servico}`.")
             return 1
+    autostart = Path.home() / ".config/autostart"
+    autostart.mkdir(parents=True, exist_ok=True)
+    shutil.copy(RAIZ / "autostart/jarvis-hud.desktop", autostart / "jarvis-hud.desktop")
     atalho = Path.home() / ".local/bin/jarvis"
     atalho.parent.mkdir(parents=True, exist_ok=True)
     if atalho.is_symlink() or atalho.exists():
         atalho.unlink()
     atalho.symlink_to(RAIZ / "bin/jarvis")
     _instalar_atalhos()
-    print("Instalado: serviços jarvis-voz e jarvis-vigia, comando `jarvis`, atalhos Super+J (falar) e "
-          "Super+Shift+J (silêncio).")
+    from jarvis import hud_cli
+
+    if not hud_cli.janela_rodando():
+        subprocess.Popen(["/usr/bin/python3", str(RAIZ / "hud/janela.py")], start_new_session=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print("Instalado: serviços jarvis-voz, jarvis-vigia e jarvis-cerebro, a janela no login, o comando `jarvis`, "
+          "atalhos Super+J (falar com o Jarvis) e Super+Shift+J (silêncio).")
     return 0

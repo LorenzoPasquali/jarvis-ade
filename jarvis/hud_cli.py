@@ -34,11 +34,20 @@ def _iniciar_janela(demo: bool) -> None:
     subprocess.Popen(comando, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def hud(demo: bool = False) -> int:
+def _pid() -> int:
     try:
-        pid = int((dados() / "hud.pid").read_text())
+        return int((dados() / "hud.pid").read_text())
     except (FileNotFoundError, ValueError):
-        pid = 0
+        return 0
+
+
+def janela_rodando() -> bool:
+    pid = _pid()
+    return bool(pid) and _janela_viva(pid)
+
+
+def hud(demo: bool = False) -> int:
+    pid = _pid()
     if pid and _janela_viva(pid):
         os.kill(pid, signal.SIGUSR1)
     else:
