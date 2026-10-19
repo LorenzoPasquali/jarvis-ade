@@ -57,3 +57,22 @@ def test_json_invalido():
     with pytest.raises(OrcaErro) as e:
         executar(["repo", "list"], runner=runner_falso("isto não é json"))
     assert e.value.codigo == "resposta_invalida"
+
+
+def test_executar_usa_caminho_absoluto_do_cli(monkeypatch):
+    import jarvis.orca as orca_mod
+    chamadas = []
+
+    def runner(args, **kwargs):
+        chamadas.append(args)
+        return subprocess.CompletedProcess(args, 0, stdout='{"ok":true,"result":{}}', stderr="")
+
+    executar(["repo", "list"], runner=runner)
+    assert chamadas[0][0] == orca_mod.orca_cli() and chamadas[0][0].startswith("/")
+    assert chamadas[0][0] != "/usr/bin/orca"
+
+
+def test_orca_cli_respeita_variavel(monkeypatch):
+    from jarvis.orca import orca_cli
+    monkeypatch.setenv("JARVIS_ORCA_CLI", "/opt/orca-teste")
+    assert orca_cli() == "/opt/orca-teste"

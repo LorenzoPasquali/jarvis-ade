@@ -1,8 +1,13 @@
 """Chamadas à CLI documentada do Orca (`orca ... --json`) e leitura do resultado."""
 
 import json
+import os
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
+
+# Nunca chamar "orca" pelo PATH: em /usr/bin/orca existe o leitor de tela do GNOME.
+_CANDIDATOS_CLI = (".config/orca/linux-orca-cli-shim/orca", ".local/bin/orca-ide")
 
 _MENSAGENS = {
     "cli_indisponivel": "Não encontrei o comando orca neste ambiente.",
@@ -45,9 +50,20 @@ class Terminal:
     gravavel: bool
 
 
+def orca_cli() -> str:
+    configurado = os.environ.get("JARVIS_ORCA_CLI")
+    if configurado:
+        return configurado
+    for relativo in _CANDIDATOS_CLI:
+        caminho = Path.home() / relativo
+        if caminho.exists():
+            return str(caminho)
+    return str(Path.home() / _CANDIDATOS_CLI[0])
+
+
 def executar(args: list[str], timeout: float = 10.0, runner=subprocess.run) -> dict:
     try:
-        proc = runner(["orca", *args, "--json"], capture_output=True, text=True, timeout=timeout)
+        proc = runner([orca_cli(), *args, "--json"], capture_output=True, text=True, timeout=timeout)
     except FileNotFoundError:
         raise _erro("cli_indisponivel") from None
     except subprocess.TimeoutExpired:
