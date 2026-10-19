@@ -1,0 +1,39 @@
+# Existing reference projects and the supplied voice sample
+/J.A.R.V.I.S/
+/jarvis-local/
+/JarvisExample.mp3
+
+# Frontend, Rust, and Tauri build output
+/node_modules/
+/dist/
+/target/
+/src-tauri/target/
+/src-tauri/gen/
+
+# Python environments and generated files
+/.venv/
+/venv/
+__pycache__/
+*.py[cod]
+
+# Downloaded model weights and caches
+/models/
+/model-cache/
+/.cache/
+*.gguf
+*.safetensors
+*.onnx
+*.pt
+*.pth
+
+# Local runtime data
+*.sqlite
+*.sqlite3
+*.db
+.env
+.env.*
+!.env.example
+
+# Jarvis runtime data
+/dados/
+/.superpowers/
