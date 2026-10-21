@@ -50,6 +50,17 @@ def _webview(ao_mensagem) -> WebKit2.WebView:
     return web
 
 
+def monitor_do_foco(tela: Gdk.Screen) -> int | None:
+    """Índice do monitor da janela com foco (ou, sem ela, do ponteiro): o Jarvis abre onde o senhor está."""
+    display = tela.get_display()
+    ativa = tela.get_active_window()  # _NET_ACTIVE_WINDOW; com o Jarvis escondido, é a janela do senhor
+    monitor = display.get_monitor_at_window(ativa) if ativa is not None else None
+    if monitor is None:
+        _, x, y = display.get_default_seat().get_pointer().get_position()
+        monitor = display.get_monitor_at_point(x, y)
+    return next((i for i in range(display.get_n_monitors()) if display.get_monitor(i) == monitor), None)
+
+
 def _carregar_depois(web: WebKit2.WebView, uri: str | None) -> bool:
     if uri:
         GLib.timeout_add(1000, lambda: web.load_uri(uri) and GLib.SOURCE_REMOVE)
@@ -78,7 +89,12 @@ class JanelaJarvis:
     def mostrar(self, *_args) -> bool:
         if self.aviso is not None:
             self.aviso.hide()
-        self.janela.fullscreen()
+        tela = self.janela.get_screen()
+        indice = monitor_do_foco(tela)
+        if indice is None:
+            self.janela.fullscreen()
+        else:
+            self.janela.fullscreen_on_monitor(tela, indice)
         self.janela.show()
         self.janela.present_with_time(Gtk.get_current_event_time() or 0)
         self.web.grab_focus()
@@ -96,8 +112,10 @@ class JanelaJarvis:
         aviso.set_focus_on_map(False)
         aviso.set_type_hint(Gdk.WindowTypeHint.NOTIFICATION)
         aviso.set_default_size(LARGURA_AVISO, ALTURA_AVISO)
-        tela = aviso.get_screen()
-        aviso.move(tela.get_width() - LARGURA_AVISO - 24, 24)
+        display = aviso.get_display()
+        monitor = display.get_primary_monitor() or display.get_monitor(0)
+        area = monitor.get_geometry()  # a tela X junta todos os monitores: o aviso fica no principal
+        aviso.move(area.x + area.width - LARGURA_AVISO - 24, area.y + 24)
         web = _webview(self._ao_mensagem_aviso)
         aviso.add(web)
         web.load_uri(url.split("?", 1)[0].rstrip("/") + "/aviso.html")
