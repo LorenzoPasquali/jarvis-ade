@@ -32,6 +32,40 @@ def _vigia(_: argparse.Namespace) -> int:
     vigia.rodar()
 
 
+def _projetos(args: argparse.Namespace) -> int:
+    import json
+    import time
+
+    from jarvis import projetos
+    from jarvis.orca import OrcaErro
+
+    try:
+        lista = projetos.listar()
+    except OrcaErro as erro:
+        print(f"{erro.mensagem} ({erro.codigo})")
+        return 1
+    if args.json:
+        print(json.dumps([projetos.como_dict(p) for p in lista], ensure_ascii=False, indent=2))
+    else:
+        print(projetos.formatar_lista(lista, time.time(), limite=len(lista) if args.todos else 10))
+    return 0
+
+
+def _projeto(args: argparse.Namespace) -> int:
+    import time
+
+    from jarvis import projetos
+    from jarvis.orca import OrcaErro
+
+    try:
+        p = projetos.encontrar(" ".join(args.nome), projetos.listar())
+    except (OrcaErro, ValueError) as erro:
+        print(getattr(erro, "mensagem", None) or erro)
+        return 1
+    print(projetos.formatar_detalhe(p, time.time(), projetos.commits_recentes(p.caminho)))
+    return 0
+
+
 def _status(args: argparse.Namespace) -> int:
     import json
     import time
@@ -269,6 +303,11 @@ def _parser() -> argparse.ArgumentParser:
     sub("hud", "abre a janela do Jarvis e começa a ouvir (Super+J)", _hud).add_argument(
         "--demo", action="store_true", help="dados de exemplo, sem o cérebro")
     sub("status", "estado das sessões de agentes no Orca", _status).add_argument("--json", action="store_true")
+    p = sub("projetos", "todos os projetos do Orca, com a última atividade e o último status do agente", _projetos)
+    p.add_argument("--todos", action="store_true", help="lista todos, não só os 10 mais recentes")
+    p.add_argument("--json", action="store_true")
+    sub("projeto", "detalhe de um projeto: último pedido, última resposta do agente e commits", _projeto).add_argument(
+        "nome", nargs="+")
     p = sub("eventos", "eventos registrados pelo vigia", _eventos)
     modo = p.add_mutually_exclusive_group()
     modo.add_argument("--pendentes", action="store_true", help="eventos desde a última leitura (padrão)")

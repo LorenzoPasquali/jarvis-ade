@@ -41,8 +41,10 @@ def _conversa(historico: list[dict]) -> str:
     return "\n".join(linhas) or "(nenhuma)"
 
 
-def mensagem(texto: str, historico: list[dict], estado: str | None = None) -> str:
+def mensagem(texto: str, historico: list[dict], estado: str | None = None, projetos: str = "") -> str:
+    secao_projetos = f"## Projetos do Orca, do mais recente ao mais antigo\n{projetos}\n\n" if projetos else ""
     return (f"{INSTRUCOES}\n\n"
             f"## Sessões de agentes abertas no Orca\n{estado if estado is not None else estado_orca()}\n\n"
+            f"{secao_projetos}"
             f"## Conversa recente com o senhor\n{_conversa(historico)}\n\n"
             f"## Mensagem atual\n{texto}")

@@ -11,7 +11,7 @@ from collections import deque
 from collections.abc import Callable
 from datetime import datetime
 
-from jarvis import consultas, orca, pendencias, turno, voz_cliente
+from jarvis import consultas, orca, pendencias, projetos, turno, voz_cliente
 from jarvis.cerebro import escuta as escuta_mod
 from jarvis.cerebro import reserva
 from jarvis.cerebro.eventos import FilaEventos
@@ -54,6 +54,7 @@ class Cerebro:
         self._ids_permissao = itertools.count(1)
         self._cartoes: set[int] = set()
         self._sessoes: list[dict] | None = None
+        self._projetos: list[projetos.Projeto] = []
         self._sistema: dict = {"tipo": "sistema", "voz": True, "orca": True}
         self._ultimo_sistema = 0.0
         self._estado = "ocioso"
@@ -90,7 +91,8 @@ class Cerebro:
 
     def estado_inicial(self) -> list[dict]:
         iniciais = [{"tipo": "historico", "mensagens": self._historico()},
-                    {"tipo": "sessoes", "itens": self._sessoes or []}, self._sistema,
+                    {"tipo": "sessoes", "itens": self._sessoes or []},
+                    {"tipo": "projetos", "itens": projetos.para_painel(self._projetos)}, self._sistema,
                     {"tipo": "estado", "valor": self._estado}]
         iniciais += [self._cartao_de(p) for p in pendencias.listar()]
         return iniciais
@@ -218,7 +220,8 @@ class Cerebro:
         historico = self._historico()
         if self._entrada_atual[1] in ("voz", "texto") and historico and historico[-1]["papel"] == "usuario":
             historico = historico[:-1]  # a mensagem atual já vai no fim
-        processo.enviar(reserva.mensagem(self._entrada_atual[0], historico))
+        resumo = projetos.formatar_lista(self._projetos, time.time()) if self._projetos else ""
+        processo.enviar(reserva.mensagem(self._entrada_atual[0], historico, projetos=resumo))
         return True
 
     def _ao_evento_modelo(self, evento: dict, provedor: str) -> None:
@@ -389,6 +392,19 @@ class Cerebro:
         if novo != self._sistema:
             self._sistema = novo
             self.publicar(novo)
+        self._atualizar_projetos()
+
+    def _atualizar_projetos(self) -> None:
+        try:
+            lista = projetos.listar()
+        except Exception as erro:  # Orca fechado ou histórico ilegível: fica a última lista boa
+            print(f"cérebro: não consegui listar os projetos: {erro!r}", flush=True)
+            return
+        antes = projetos.para_painel(self._projetos)
+        self._projetos = lista
+        itens = projetos.para_painel(lista)
+        if itens != antes:
+            self.publicar({"tipo": "projetos", "itens": itens})
 
     # ---------- laço ----------
 

@@ -405,3 +405,41 @@ def test_permissao_gigante_e_negada_sem_cartao(cerebro_falso):
     c.publicar = publicados.append
     assert c.pedir_permissao("Bash", {"command": "x" * 5000}) is False
     assert not [p for p in publicados if p["tipo"] == "cartao"]
+
+
+def test_projetos_vao_para_o_painel_e_para_o_modo_reserva(dados_tmp, monkeypatch):
+    from jarvis import projetos
+
+    lista = [projetos.Projeto(nome="app-analise-saude", caminho="/git/app-analise-saude", ts=time.time() - 60,
+                              agente="claude", resposta="Plano 4 mesclado.", ts_agente=time.time() - 60)]
+    monkeypatch.setattr(projetos, "listar", lambda: lista)
+    monkeypatch.setattr(reserva, "estado_orca", lambda: "")
+    claude, codex = ClaudeFalso(), CodexFalso()
+    c = Cerebro(claude=claude, codex=codex, falar=lambda t: True, bloqueada=lambda: False,
+                chamar_voz=lambda *a, **k: {})
+    publicados = []
+    c.publicar = publicados.append
+    c._atualizar_projetos()
+    [evento] = [p for p in publicados if p["tipo"] == "projetos"]
+    assert evento["itens"][0]["nome"] == "app-analise-saude"
+    assert evento["itens"][0]["resposta"] == "Plano 4 mesclado."
+    assert {"tipo": "projetos", "itens": evento["itens"]} in c.estado_inicial()
+    c._atualizar_projetos()  # nada mudou: não publica de novo
+    assert sum(p["tipo"] == "projetos" for p in publicados) == 1
+
+    c.mensagem_usuario("e o app de saúde?", falada=False)
+    c.ao_evento_claude({"type": "result", "is_error": True, "result": "usage limit"})
+    assert "## Projetos do Orca, do mais recente ao mais antigo\n• app-analise-saude" in codex.enviados[0]
+
+
+def test_projetos_com_orca_fechado_mantem_a_ultima_lista(dados_tmp, monkeypatch):
+    from jarvis import orca, projetos
+
+    c = Cerebro(claude=ClaudeFalso(), falar=lambda t: True, bloqueada=lambda: False, chamar_voz=lambda *a, **k: {})
+    c._projetos = [projetos.Projeto(nome="x", caminho="/git/x")]
+
+    def fechado():
+        raise orca.OrcaErro("runtime_unavailable", "Orca fechado")
+    monkeypatch.setattr(projetos, "listar", fechado)
+    c._atualizar_projetos()
+    assert [p.nome for p in c._projetos] == ["x"]

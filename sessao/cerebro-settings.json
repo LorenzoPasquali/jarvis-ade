@@ -2,6 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(jarvis status:*)",
+      "Bash(jarvis projetos:*)",
+      "Bash(jarvis projeto:*)",
       "Bash(jarvis historico:*)",
       "Bash(jarvis clima:*)",
       "Bash(jarvis enviar:*)",
