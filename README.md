@@ -1,6 +1,6 @@
 # Jarvis
 
-Orquestrador por voz das sessões de agentes abertas no Orca. O cérebro é uma sessão do Claude Code com a persona do Jarvis; ele enxerga as outras sessões pela CLI do Orca, responde aos agentes conforme as suas ordens e regras, avisa quando algo muda e fala na voz clonada de `JarvisExample.mp3` (OmniVoice na GPU).
+Orquestrador por voz das sessões de agentes abertas no Orca. O cérebro usa Claude Code com a persona do Jarvis; se o Claude falhar ou atingir o limite de uso, tenta Gemini 3.8 Flash pelo Antigravity e, se também falhar, continua o turno no Codex. O Gemini é iniciado somente no fallback e fica restrito a ferramentas de leitura. O Jarvis enxerga as outras sessões pela CLI do Orca, responde aos agentes conforme as suas ordens e regras, avisa quando algo muda e fala na voz clonada de `JarvisExample.mp3` (OmniVoice na GPU).
 
 Design: `docs/superpowers/specs/2026-10-19-jarvis-app-hud-design.md` (sobre `docs/superpowers/specs/2026-10-19-jarvis-orquestrador-design.md`).
 
@@ -14,7 +14,7 @@ Liga três serviços do systemd do usuário, a janela no login, o comando `jarvi
 
 - `jarvis-voz`: servidor de voz em `127.0.0.1:8765`, com OmniVoice e Whisper carregados na GPU (~4 GB de VRAM).
 - `jarvis-vigia`: registra as mudanças das sessões do Orca em `dados/eventos.jsonl`.
-- `jarvis-cerebro`: o Jarvis em si. Mantém um Claude Code sem interface (modelo `sonnet`, ou o que estiver em `JARVIS_MODELO`), recebe as falas e os eventos e serve a janela em `127.0.0.1:8766`. Se o Orca estiver fechado, ele o abre.
+- `jarvis-cerebro`: o Jarvis em si. Mantém um Claude Code sem interface (modelo `haiku`, rápido, ou o que estiver em `JARVIS_MODELO`; sem os plugins e conectores do usuário) como padrão. Se um turno do Claude falhar ou exceder o limite, tenta Gemini 3.8 Flash Medium via `agy`; se esse turno também falhar, repassa ao Codex. O modelo Gemini pode ser alterado por `JARVIS_GEMINI_MODELO`; o Codex usa o modelo padrão dele ou `JARVIS_CODEX_MODELO`. O Gemini só inicia quando necessário e não recebe ferramentas de escrita nem comandos. O serviço recebe as falas e os eventos e serve a janela em `127.0.0.1:8766`. Se o Orca estiver fechado, ele o abre.
 - A janela (`hud/janela.py`) sobe escondida no login, pelo `~/.config/autostart/jarvis-hud.desktop`.
 - **Super+J** abre a janela já ouvindo. Quando você para de falar, ele envia; Super+J de novo encerra na hora. Esc fecha.
 - **Super+Shift+J** interrompe a fala.

@@ -13,6 +13,9 @@ def comando_claude(raiz: Path, modelo: str) -> list[str]:
     return ["claude", "-p", "--input-format", "stream-json", "--output-format", "stream-json",
             "--include-partial-messages", "--verbose", "--model", modelo,
             "--settings", str(raiz / "sessao/cerebro-settings.json"),
+            # Só o MCP do Jarvis e só as configurações do projeto: sem os plugins, conectores e hooks do usuário,
+            # que enchiam o contexto (~40 mil tokens a cada turno) e deixavam o Jarvis lento.
+            "--setting-sources", "project,local", "--strict-mcp-config",
             "--mcp-config", json.dumps(mcp), "--permission-prompt-tool", "mcp__jarvis__permissao"]
 
 
@@ -108,6 +111,8 @@ class ProcessoClaude:
         espera = min(60.0, self._espera_reinicio * 2 ** min(self._falhas_rapidas, 5))
         while not self._parando:
             time.sleep(espera)
+            if self._parando:  # mandaram parar durante a espera
+                return
             try:
                 self.iniciar()
                 return

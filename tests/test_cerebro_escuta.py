@@ -168,7 +168,8 @@ def test_iniciar_duas_vezes_ao_mesmo_tempo_cria_um_gravador(tmp_path, monkeypatc
     original = escuta_mod.subprocess.Popen
 
     def popen(*a, **k):
-        criados.append(a)
+        if a and a[0] == ["sleep", "5"]:  # só os gravadores desta escuta (outros testes também abrem processos)
+            criados.append(a)
         return original(["sleep", "5"], **{c: v for c, v in k.items() if c != "preexec_fn"})
 
     monkeypatch.setattr(escuta_mod.subprocess, "Popen", popen)

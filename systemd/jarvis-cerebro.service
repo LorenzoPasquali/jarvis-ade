@@ -1,5 +1,5 @@
 [Unit]
-Description=Jarvis: cérebro sempre ligado (Claude headless, voz e janela)
+Description=Jarvis: Claude, Gemini e Codex em fallback, voz e janela
 After=jarvis-voz.service jarvis-vigia.service
 
 [Service]

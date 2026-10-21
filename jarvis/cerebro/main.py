@@ -1,4 +1,4 @@
-"""Cérebro do Jarvis: liga o Claude headless, a voz, a escuta, os eventos do vigia e a janela."""
+"""Cérebro do Jarvis: liga os modelos, a voz, a escuta, os eventos do vigia e a janela."""
 
 import itertools
 import json
@@ -19,7 +19,7 @@ from jarvis.config import RAIZ, dados
 
 ESPERA_PERMISSAO_S = 120
 MAX_ENTRADA_PERMISSAO = 4000  # acima disso o cartão não daria para ler inteiro: nega
-TRAVADO_S = 300  # turno sem nenhuma saída do Claude por tanto tempo: considera travado e reinicia
+TRAVADO_S = 300  # turno sem saída de modelo por tanto tempo: considera travado e reinicia
 PAUSA_APOS_ERRO_S = 600
 MAX_HISTORICO = 50
 INTERVALO_SISTEMA_S = 60
@@ -35,8 +35,9 @@ def _falar_no_servidor(texto: str) -> bool:
 
 class Cerebro:
     def __init__(self, claude=None, falar: Callable[[str], bool] = _falar_no_servidor,
-                 bloqueada: Callable[[], bool] = escuta_mod.tela_bloqueada, chamar_voz=voz_cliente.chamar):
-        self.claude = claude
+                 bloqueada: Callable[[], bool] = escuta_mod.tela_bloqueada, chamar_voz=voz_cliente.chamar,
+                 codex=None, gemini=None):
+        self.claude, self.gemini, self.codex = claude, gemini, codex
         self.bloqueada = bloqueada
         self._falar_fn = falar
         self._chamar_voz = chamar_voz
@@ -59,6 +60,9 @@ class Cerebro:
         self._calar_turno = False  # o senhor falou por cima: o resto desta resposta não é falado
         self._ultima_saida = time.time()
         self._eventos_pausados_ate = 0.0
+        self._entrada_atual: tuple[str, str] | None = None
+        self._provedor_ativo = "claude"
+        self._fallback_ativo = False
         self.janela_aberta = False
         self.escuta = escuta_mod.Escuta(ao_nivel=self._ao_nivel, ao_fim=self._ao_fim_escuta)
 
@@ -123,13 +127,13 @@ class Cerebro:
         self._registrar("usuario", texto)
         self.publicar({"tipo": "usuario", "texto": texto, "falada": falada})
         self._chamar_voz("/parar")
-        if self.claude.ocupado:
+        if self._ocupado():
             self._calar_turno = True
         self._para_claude(f"[voz] {texto}" if falada else texto, "voz" if falada else "texto")
 
     def _para_claude(self, texto: str, tipo: str) -> None:
         with self._despacho:
-            if self.claude.ocupado or self._fila_usuario:
+            if self._ocupado() or self._fila_usuario:
                 self._fila_usuario.append((texto, tipo))
             else:
                 self._enviar_claude(texto, tipo)
@@ -141,16 +145,17 @@ class Cerebro:
         self._resposta = ""
         self._pendencia_no_turno = False
         self._separador.reiniciar()
+        self._entrada_atual = (texto, tipo)
+        self._provedor_ativo = "claude"
+        self._fallback_ativo = False
         self._definir_estado("pensando")
         self.claude.enviar(texto)
 
     def super_j(self) -> None:
         self.janela_aberta = True
-        if self.escuta.ativa:
-            self.escuta.encerrar()
-        else:
-            self.escuta.iniciar()
+        if not self.escuta.ativa:
             self._definir_estado("ouvindo")
+            self.escuta.iniciar()
 
     def fechar_janela(self) -> None:
         self.janela_aberta = False
@@ -162,7 +167,7 @@ class Cerebro:
         if texto:
             self.mensagem_usuario(texto, falada=True)
         else:
-            self._definir_estado("pensando" if self.claude.ocupado else "ocioso")
+            self._definir_estado("pensando" if self._ocupado() else "ocioso")
 
     # ---------- saída do Claude ----------
 
@@ -176,8 +181,46 @@ class Cerebro:
             self._sistema = {**self._sistema, "voz": False}
             self.publicar(self._sistema)
 
+    def _ocupado(self) -> bool:
+        return (bool(self.claude and self.claude.ocupado) or bool(self.gemini and self.gemini.ocupado)
+                or bool(self.codex and self.codex.ocupado))
+
     def ao_evento_claude(self, evento: dict) -> None:
+        self._ao_evento_modelo(evento, "Claude")
+
+    def ao_evento_codex(self, evento: dict) -> None:
+        self._ao_evento_modelo(evento, "Codex")
+
+    def ao_evento_gemini(self, evento: dict) -> None:
+        self._ao_evento_modelo(evento, "Gemini")
+
+    def _iniciar_fallback(self, provedor: str, evento: dict) -> bool:
+        if not self._entrada_atual:
+            return False
+        if provedor == "Claude":
+            destino, processo = ("gemini", self.gemini) if self.gemini else ("codex", self.codex)
+        elif provedor == "Gemini":
+            destino, processo = "codex", self.codex
+        else:
+            return False
+        if not processo:
+            return False
+        detalhe = str(evento.get("result") or "")[:300]
+        print(f"cérebro: {provedor} falhou ({detalhe!r}); tentando {destino}", flush=True)
+        self._fallback_ativo = True
+        self._provedor_ativo = destino
+        self._resposta = ""
+        self._chamar_voz("/parar")
+        self._separador.reiniciar()
+        self.publicar({"tipo": "resposta_fim", "texto": ""})
+        self._definir_estado("pensando")
+        processo.enviar(self._entrada_atual[0])
+        return True
+
+    def _ao_evento_modelo(self, evento: dict, provedor: str) -> None:
         tipo = evento.get("type")
+        if self._entrada_atual and provedor.lower() != self._provedor_ativo:
+            return  # descarta eventos atrasados de um provedor que já foi substituído
         self._ultima_saida = time.time()
         if tipo == "stream_event":
             interno = evento.get("event") or {}
@@ -188,18 +231,30 @@ class Cerebro:
                 self._acrescentar(delta.get("text", ""))
         elif tipo == "result":
             with self._despacho:
-                self._fim_do_turno(evento)
+                if evento.get("is_error") and self._iniciar_fallback(provedor, evento):
+                    return
+                self._fim_do_turno(evento, provedor)
         elif tipo == "jarvis_reiniciando":
             self._definir_estado("desconectado")
         elif tipo in ("system", "jarvis_pronto") and self._estado == "desconectado":
             self._definir_estado("ocioso")
 
-    def _fim_do_turno(self, evento: dict) -> None:
-        turno.encerrar()
+    def _fim_do_turno(self, evento: dict, provedor: str = "Claude") -> None:
         if evento.get("is_error"):
-            self._erro_do_claude(evento)
+            turno.encerrar()
+            self._erro_do_modelo(evento, provedor)
             return
         texto = evento.get("result") or self._resposta
+        if (not texto.strip() and self._entrada_atual
+                and self._entrada_atual[1] in ("voz", "texto")):
+            vazio = {**evento, "is_error": True,
+                     "result": f"{provedor} encerrou o turno sem fornecer uma resposta."}
+            if self._iniciar_fallback(provedor, vazio):
+                return
+            turno.encerrar()
+            self._erro_do_modelo(vazio, provedor)
+            return
+        turno.encerrar()
         self._separador.fim(texto)
         if texto.strip():
             self._registrar("jarvis", texto)
@@ -208,23 +263,27 @@ class Cerebro:
             self._definir_estado("ocioso")
         if self._pendencia_no_turno and self.janela_aberta:
             threading.Thread(target=self._reabrir_escuta, daemon=True).start()
+        self._fallback_ativo = False
+        self._entrada_atual = None
 
-    def _erro_do_claude(self, evento: dict) -> None:
-        """Erros do Claude (queda, limite de uso) viram uma frase curta em português — nunca lidos crus."""
-        print(f"cérebro: erro do Claude: {evento.get('subtype')} {str(evento.get('result'))[:300]!r}", flush=True)
+    def _erro_do_modelo(self, evento: dict, provedor: str) -> None:
+        """Erros de modelo viram uma frase curta em português — nunca lidos crus."""
+        print(f"cérebro: erro do {provedor}: {evento.get('subtype')} {str(evento.get('result'))[:300]!r}", flush=True)
         self._separador.reiniciar()
         if evento.get("subtype") == "error_restart":
-            texto, fala = ("Perdi a conexão com o Claude no meio da resposta, senhor. Pode repetir, por favor?",
+            texto, fala = (f"Perdi a conexão com o {provedor} no meio da resposta, senhor. Pode repetir, por favor?",
                            "Perdi a conexão, senhor. Pode repetir?")
         else:
             self._eventos_pausados_ate = time.time() + PAUSA_APOS_ERRO_S
-            texto, fala = ("Não consegui responder agora, senhor: o Claude devolveu um erro (talvez limite de uso). "
+            texto, fala = (f"Não consegui responder agora, senhor: o {provedor} devolveu um erro (talvez limite de uso). "
                            "Os avisos automáticos ficam pausados por dez minutos.",
                            "Não consegui responder agora, senhor.")
         self._registrar("jarvis", texto)
         self.publicar({"tipo": "resposta_fim", "texto": texto})
         self._falar(fala)
         self._definir_estado("desconectado" if evento.get("subtype") == "error_restart" else "ocioso")
+        self._fallback_ativo = False
+        self._entrada_atual = None
 
     def _acrescentar(self, texto: str) -> None:
         self._resposta += texto
@@ -239,7 +298,7 @@ class Cerebro:
             if not saude or (not saude.get("falando") and not saude.get("fila")):
                 break
             time.sleep(0.3)
-        if self.janela_aberta and not self.escuta.ativa and not self.claude.ocupado:
+        if self.janela_aberta and not self.escuta.ativa and not self._ocupado():
             self.escuta.iniciar()
             self._definir_estado("ouvindo")
 
@@ -340,12 +399,15 @@ class Cerebro:
         if self.bloqueada():
             self._estava_bloqueada = True
             return
-        if self.claude.ocupado and time.time() - self._ultima_saida >= TRAVADO_S:
-            print("cérebro: Claude sem resposta há muito tempo; reiniciando", flush=True)
+        if self._ocupado() and time.time() - self._ultima_saida >= TRAVADO_S:
+            print("cérebro: modelo sem resposta há muito tempo; reiniciando", flush=True)
             self._ultima_saida = time.time()
-            self.claude.reiniciar()
+            processo = {"claude": self.claude, "gemini": self.gemini, "codex": self.codex}.get(
+                self._provedor_ativo)
+            if processo:
+                processo.reiniciar()
             return
-        if self.claude.ocupado or self.escuta.ativa:  # não começa turno com o senhor falando
+        if self._ocupado() or self.escuta.ativa:  # não começa turno com o senhor falando
             return
         if self._estava_bloqueada:
             self._estava_bloqueada = False
@@ -387,12 +449,19 @@ def garantir_orca() -> None:
 
 def main() -> int:
     from jarvis.cerebro.claude import ProcessoClaude, comando_claude
+    from jarvis.cerebro.codex import ProcessoCodex, comando_codex
+    from jarvis.cerebro.gemini import ProcessoGemini, comando_gemini
     from jarvis.cerebro.servidor import criar
 
     env = {**os.environ, "PATH": f"{RAIZ / 'bin'}{os.pathsep}{os.environ.get('PATH', '')}", "JARVIS_CEREBRO": "1"}
     cerebro = Cerebro()
-    cerebro.claude = ProcessoClaude(comando_claude(RAIZ, os.environ.get("JARVIS_MODELO", "sonnet")),
+    cerebro.claude = ProcessoClaude(comando_claude(RAIZ, os.environ.get("JARVIS_MODELO", "haiku")),
                                     RAIZ / "sessao", env, cerebro.ao_evento_claude, dados() / "cerebro-sessao.json")
+    cerebro.gemini = ProcessoGemini(comando_gemini(os.environ.get("JARVIS_GEMINI_MODELO", "gemini-3.8-flash-medium")),
+                                    RAIZ, env, cerebro.ao_evento_gemini, dados() / "gemini-sessao.json",
+                                    RAIZ / "sessao/CLAUDE.md")
+    cerebro.codex = ProcessoCodex(comando_codex(os.environ.get("JARVIS_CODEX_MODELO")), RAIZ / "sessao", env,
+                                  cerebro.ao_evento_codex, dados() / "codex-sessao.json", RAIZ / "sessao/CLAUDE.md")
     servidor = criar(cerebro, porta=8766)  # primeiro a porta: a janela do login já pode conectar
     threading.Thread(target=servidor.serve_forever, daemon=True).start()
     garantir_orca()

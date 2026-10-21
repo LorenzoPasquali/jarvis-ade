@@ -28,6 +28,10 @@ class ClaudeFalso:
         self.ocupado = True
 
 
+class CodexFalso(ClaudeFalso):
+    pass
+
+
 @pytest.fixture
 def cerebro_falso(dados_tmp):
     claude = ClaudeFalso()
@@ -310,6 +314,24 @@ def test_erro_do_claude_vira_aviso_curto_e_pausa_eventos(cerebro_falso):
     eventos.anexar(ev("terminou"))
     c.laco_uma_vez()
     assert claude.enviados == []
+
+
+def test_erro_do_claude_reenvia_o_turno_atual_ao_codex(dados_tmp):
+    claude, codex = ClaudeFalso(), CodexFalso()
+    c = Cerebro(claude=claude, codex=codex, falar=lambda t: True, bloqueada=lambda: False,
+                chamar_voz=lambda *a, **k: {})
+    c.mensagem_usuario("como estão os projetos?", falada=False)
+    c.ao_evento_claude({"type": "result", "is_error": True, "result": "usage limit"})
+    assert codex.enviados == ["como estão os projetos?"]
+    assert c._estado == "pensando"
+
+
+def test_erro_do_claude_sem_turno_nao_chama_codex(dados_tmp):
+    codex = CodexFalso()
+    c = Cerebro(claude=ClaudeFalso(), codex=codex, falar=lambda t: True, bloqueada=lambda: False,
+                chamar_voz=lambda *a, **k: {})
+    c.ao_evento_claude({"type": "result", "is_error": True, "result": "erro ao iniciar"})
+    assert codex.enviados == []
 
 
 def test_queda_no_meio_mantem_desconectado_e_pede_para_repetir(cerebro_falso):

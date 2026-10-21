@@ -21,6 +21,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from jarvis.config import MP3_REFERENCIA, TEXTO_REFERENCIA, VOZ_PORTA, dados  # noqa: E402
 from jarvis.texto_fala import dividir_frases  # noqa: E402
 
+VELOCIDADE_FALA = 1.2
+
 
 def _log(mensagem: str) -> None:
     print(f"{time.strftime('%H:%M:%S')} {mensagem}", file=sys.stderr, flush=True)
@@ -103,8 +105,17 @@ class TocadorPw:
         arquivo = dados() / "voz" / "fala.wav"
         arquivo.parent.mkdir(parents=True, exist_ok=True)
         arquivo.write_bytes(wav)
+        arquivo_rapido = arquivo.with_name("fala-1-2x.wav")
+        arquivo_tocar = arquivo_rapido
+        try:
+            subprocess.run(["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i",
+                            str(arquivo), "-filter:a", f"atempo={VELOCIDADE_FALA}", str(arquivo_rapido)],
+                           check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        except (OSError, subprocess.CalledProcessError) as erro:
+            _log(f"falha ao acelerar a voz; usando velocidade normal: {erro}")
+            arquivo_tocar = arquivo
         with self._trava:
-            self._processo = subprocess.Popen(["pw-play", str(arquivo)])
+            self._processo = subprocess.Popen(["pw-play", str(arquivo_tocar)])
         self._processo.wait()
 
     def parar(self) -> None:

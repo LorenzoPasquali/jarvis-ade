@@ -75,6 +75,8 @@ class Escuta:
         self._ao_nivel, self._ao_fim, self._chamar = ao_nivel, ao_fim, chamar
         self._comando = comando
         self._proc: subprocess.Popen | None = None
+        self._proc_pronto = threading.Event()
+        self._erro_gravador: OSError | None = None
         self._encerrar = threading.Event()
         self._trava = threading.Lock()
         self.ativa = False
@@ -91,15 +93,34 @@ class Escuta:
         arquivo.unlink(missing_ok=True)
         comando = self._comando or ["pw-record", "--rate", str(TAXA), "--channels", "1", "--format", "s16",
                                     str(arquivo)]
-        try:
-            self._proc = subprocess.Popen(comando, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                          preexec_fn=_morrer_com_o_pai)
-        except OSError:
+        self._proc_pronto.clear()
+        self._erro_gravador = None
+        threading.Thread(target=self._abrir_gravador, args=(comando,), daemon=True).start()
+        self._proc_pronto.wait()
+        if self._erro_gravador:
+            print(f"cérebro: não iniciou pw-record: {self._erro_gravador}", flush=True)
             self._chamar("/ouvindo", {"ligado": False})
             self.ativa = False
             self._ao_fim(None)
             return
         threading.Thread(target=self._acompanhar, args=(arquivo,), daemon=True).start()
+
+    def _abrir_gravador(self, comando: list[str]) -> None:
+        """Mantém viva a thread que criou `pw-record` até o gravador terminar.
+
+        No Linux, PR_SET_PDEATHSIG acompanha a thread criadora, não o processo inteiro.
+        `iniciar()` costuma rodar numa thread HTTP curta; esta thread dona evita que o
+        gravador receba SIGTERM assim que a requisição Super+J termina.
+        """
+        try:
+            # Deixa diagnósticos do PipeWire chegarem ao journal do serviço.
+            self._proc = subprocess.Popen(comando, stdout=subprocess.DEVNULL, preexec_fn=_morrer_com_o_pai)
+        except OSError as erro:
+            self._erro_gravador = erro
+        finally:
+            self._proc_pronto.set()
+        if self._proc:
+            self._proc.wait()
 
     def encerrar(self) -> None:
         self._encerrar.set()
@@ -119,16 +140,21 @@ class Escuta:
         detector = DetectorSilencio()
         inicio = time.time()
         offset = None
+        inicio_audio = None
         resultado = None
         while resultado is None:
             if self._encerrar.wait(0.1):
                 resultado = "fim"
                 break
+            if self._proc and self._proc.poll() is not None:
+                print(f"cérebro: pw-record encerrou durante a escuta (código {self._proc.returncode})", flush=True)
+                return None
             novo = b""
             try:
                 with arquivo.open("rb") as f:
                     if offset is None:
-                        offset = _inicio_dados(f.read(4096))
+                        inicio_audio = _inicio_dados(f.read(4096))
+                        offset = inicio_audio
                     if offset is not None:
                         f.seek(offset)
                         novo = f.read()
@@ -144,7 +170,9 @@ class Escuta:
         self._parar_gravacao()
         if resultado != "fim" or offset is None or not arquivo.exists():
             return None
-        duracao = max(0, arquivo.stat().st_size - offset) / BYTES_POR_SEGUNDO
+        # `offset` é o cursor de leitura, que no fim já aponta para o fim do PCM.
+        # A duração precisa usar o início dos dados do WAV, não o cursor avançado.
+        duracao = max(0, arquivo.stat().st_size - (inicio_audio or 44)) / BYTES_POR_SEGUNDO
         resposta = self._chamar("/transcrever", {"caminho": str(arquivo)}, timeout=30.0)
         return transcricao_util(resposta.get("texto", ""), duracao) if resposta else None
 
