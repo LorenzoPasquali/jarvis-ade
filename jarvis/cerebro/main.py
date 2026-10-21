@@ -241,11 +241,12 @@ class Cerebro:
             self._sistema = {**self._sistema, "modelo": nome}
             self.publicar(self._sistema)
 
-    def palavra_jarvis(self) -> None:
-        """O senhor disse "Jarvis".
+    def palavra_jarvis(self, resto: str = "") -> None:
+        """O senhor disse "Jarvis" (`resto`: o que veio depois, na mesma frase).
 
-        Com a janela fechada: responde na hora com a frase já gerada e abre a janela ouvindo a pergunta.
-        Com a janela aberta: vale como o Super+J — cala a fala e já ouve, sem saudação, para o senhor emendar a frase.
+        "Jarvis, <pergunta>": a pergunta vai direto, e a janela abre para mostrar o andamento.
+        Só "Jarvis", com a janela fechada: responde na hora com a frase já gerada e abre a janela ouvindo.
+        Só "Jarvis", com a janela aberta: vale como o Super+J — cala a fala e já ouve, sem saudação.
         """
         agora = time.time()
         if self.escuta.ativa or self.bloqueada() or agora - self._ultima_palavra < INTERVALO_PALAVRA_S:
@@ -254,6 +255,12 @@ class Cerebro:
             return  # quem disse "Jarvis" foi a própria fala dele, não o senhor
         self._ultima_palavra = agora
         self._chamar_voz("/parar")
+        if resto:
+            if not self.janela_aberta:
+                self.mostrar_janela()
+                self.janela_aberta = True
+            self.mensagem_usuario(resto, falada=True)
+            return
         if not self.janela_aberta:
             saudacao = frase_pronta("saudacao")
             saude = self._chamar_voz("/saude") or {}
@@ -646,7 +653,7 @@ def main() -> int:
     threading.Thread(target=servidor.serve_forever, daemon=True).start()
     garantir_orca()
     cerebro.claude.iniciar()
-    cerebro.ouvido = Ouvido(cerebro.palavra_jarvis)
+    cerebro.ouvido = Ouvido(cerebro.palavra_jarvis, pausado=lambda: cerebro.escuta.ativa or cerebro.bloqueada())
     cerebro.ouvido.iniciar()
     print("cérebro pronto em 127.0.0.1:8766", flush=True)
     cerebro.laco()

@@ -1,31 +1,17 @@
-import sys
-import time
+import array
+import math
+
+import pytest
 
 from jarvis.cerebro import main as cerebro_main
 from jarvis.cerebro import ouvido as ouvido_mod
 from jarvis.cerebro.main import Cerebro
+from jarvis.cerebro.ouvido import BYTES_BLOCO, Recortador, depois_de_jarvis
 from jarvis.config import frase_pronta
 
 
-class DetectorFalso:
-    """Detecta a palavra no 3º quadro."""
-    frame_length = 4
-    sample_rate = 16000
-
-    def __init__(self):
-        self.quadros = 0
-        self.apagado = False
-
-    def process(self, quadro):
-        self.quadros += 1
-        assert len(quadro) == self.frame_length
-        return 0 if self.quadros == 3 else -1
-
-    def delete(self):
-        self.apagado = True
-
-
 def esperar(cond, limite=5.0):
+    import time
     fim = time.time() + limite
     while time.time() < fim:
         if cond():
@@ -34,34 +20,116 @@ def esperar(cond, limite=5.0):
     return False
 
 
-def test_sem_chave_o_ouvido_fica_desligado(monkeypatch, tmp_path):
-    monkeypatch.delenv("PICOVOICE_ACCESS_KEY", raising=False)
-    monkeypatch.setattr(ouvido_mod, "ARQUIVO_CHAVE", tmp_path / "nao-existe.key")
-    criados = []
-    o = ouvido_mod.Ouvido(lambda: None, criar_detector=lambda: criados.append(1))
-    assert o.iniciar() is False
-    assert criados == []
+def bloco(nivel: float) -> bytes:
+    n = BYTES_BLOCO // 2
+    return array.array("h", (int(nivel * 32767 * math.sin(i / 3)) for i in range(n))).tobytes()
 
 
-def test_chave_vem_do_arquivo_fora_do_repositorio(monkeypatch, tmp_path):
-    monkeypatch.delenv("PICOVOICE_ACCESS_KEY", raising=False)
-    (tmp_path / "picovoice.key").write_text("  abc123\n")
-    monkeypatch.setattr(ouvido_mod, "ARQUIVO_CHAVE", tmp_path / "picovoice.key")
-    assert ouvido_mod.chave() == "abc123"
+SILENCIO, FALA = bloco(0.002), bloco(0.1)
 
 
-def test_palavra_detectada_chama_o_cerebro(monkeypatch):
-    monkeypatch.setenv("PICOVOICE_ACCESS_KEY", "teste")
+@pytest.mark.parametrize("texto, resto", [
+    ("Jarvis.", ""),
+    ("Jarvis, como está o app de saúde?", "como está o app de saúde?"),
+    ("Ei, Járvis, bom dia", "bom dia"),
+    ("Ok jarves que horas são", "que horas são"),
+    ("Djarvis!", ""),
+    ("Bom dia, tudo bem?", None),
+    ("O Jarbas chegou", None),
+    ("Falei com o pessoal do Jarvis ontem", None),  # "Jarvis" no meio da frase não chama
+    ("", None),
+])
+def test_depois_de_jarvis(texto, resto):
+    assert depois_de_jarvis(texto) == resto
+
+
+def test_recortador_entrega_a_frase_com_um_pouco_de_antes():
+    r = Recortador(silencio_s=0.3)
+    saidas = [r.alimentar(b) for b in [SILENCIO] * 20 + [FALA] * 6 + [SILENCIO] * 3]
+    frases = [f for f in saidas if f]
+    assert len(frases) == 1
+    assert frases[0].startswith(SILENCIO * 3)  # 300 ms de antes, para não cortar o "Jar"
+    assert FALA * 6 in frases[0]
+
+
+def test_recortador_ignora_estalo_e_falatorio_comprido():
+    r = Recortador(silencio_s=0.3, maximo_s=2.0)
+    estalo = [SILENCIO] * 20 + [FALA] + [SILENCIO] * 5
+    longo = [FALA] * 30 + [SILENCIO] * 5
+    assert not any(r.alimentar(b) for b in estalo + longo)
+    depois = [r.alimentar(b) for b in [FALA] * 6 + [SILENCIO] * 3]
+    assert any(depois)  # depois do descarte, volta a recortar normalmente
+
+
+def _ouvido(respostas, ouvidas):
+    chamadas = []
+
+    def chamar(rota, corpo=None, timeout=3.0):
+        chamadas.append(corpo)
+        return {"texto": respostas[len(chamadas) - 1]}
+    return ouvido_mod.Ouvido(ouvidas.append, chamar=chamar), chamadas
+
+
+def test_so_jarvis_curto_nao_transcreve_de_novo(dados_tmp):
     ouvidas = []
-    detector = DetectorFalso()
-    # 8 bytes por quadro (4 amostras s16); o "gravador" manda zeros para sempre
-    gravador = [sys.executable, "-c", "import sys,time\nwhile True: sys.stdout.buffer.write(bytes(8)); "
-                                      "sys.stdout.flush(); time.sleep(0.01)"]
-    o = ouvido_mod.Ouvido(lambda: ouvidas.append(1), criar_detector=lambda: detector, comando=gravador)
-    assert o.iniciar()
-    assert esperar(lambda: ouvidas == [1])
+    o, chamadas = _ouvido(["Jarvis."], ouvidas)
+    o.conferir(FALA * 8)
+    assert ouvidas == [""]
+    assert chamadas[0]["max_tokens"] == ouvido_mod.TOKENS_CONFERIR and len(chamadas) == 1
+    assert not list(dados_tmp.glob("ouvido-*.wav"))
+
+
+def test_jarvis_com_pergunta_transcreve_a_frase_inteira(dados_tmp):
+    ouvidas = []
+    o, chamadas = _ouvido(["Jarvis, como está o", "Jarvis, como está o app de saúde?"], ouvidas)
+    o.conferir(FALA * 25)
+    assert ouvidas == ["como está o app de saúde?"]
+    assert "max_tokens" not in chamadas[1]
+
+
+def test_frase_sem_jarvis_nao_chama(dados_tmp):
+    ouvidas = []
+    o, chamadas = _ouvido(["Bom dia, tudo bem?"], ouvidas)
+    o.conferir(FALA * 25)
+    assert ouvidas == [] and len(chamadas) == 1
+
+
+def test_limite_de_transcricoes_por_minuto(dados_tmp):
+    ouvidas = []
+    o, chamadas = _ouvido(["nada"] * 50, ouvidas)
+    for _ in range(ouvido_mod.MAX_POR_MINUTO + 5):
+        o.conferir(FALA * 5)
+    assert len(chamadas) == ouvido_mod.MAX_POR_MINUTO
+
+
+def test_ouvido_le_o_microfone_e_confere_as_frases(dados_tmp, tmp_path):
+    import sys
+    sinal = tmp_path / "audio.raw"
+    sinal.write_bytes(SILENCIO * 20 + FALA * 6 + SILENCIO * 10)
+    gravador = [sys.executable, "-c", f"import sys,time\nsys.stdout.buffer.write(open({str(sinal)!r},'rb').read())\n"
+                                      "sys.stdout.flush(); time.sleep(5)"]
+    ouvidas = []
+    o = ouvido_mod.Ouvido(ouvidas.append, chamar=lambda rota, corpo=None, timeout=3.0: {"texto": "Jarvis"},
+                          comando=gravador)
+    o.iniciar()
+    assert esperar(lambda: ouvidas == [""])
     o.parar()
-    assert esperar(lambda: detector.apagado)
+
+
+def test_pausado_nao_confere(dados_tmp, tmp_path):
+    import sys
+    import time
+    sinal = tmp_path / "audio.raw"
+    sinal.write_bytes(SILENCIO * 20 + FALA * 6 + SILENCIO * 10)
+    gravador = [sys.executable, "-c", f"import sys,time\nsys.stdout.buffer.write(open({str(sinal)!r},'rb').read())\n"
+                                      "sys.stdout.flush(); time.sleep(5)"]
+    chamadas = []
+    o = ouvido_mod.Ouvido(lambda r: None, pausado=lambda: True, comando=gravador,
+                          chamar=lambda rota, corpo=None, timeout=3.0: chamadas.append(1) or {"texto": ""})
+    o.iniciar()
+    time.sleep(1.0)
+    o.parar()
+    assert chamadas == []
 
 
 def _cerebro(dados_tmp, saude=None):
@@ -76,6 +144,15 @@ def _cerebro(dados_tmp, saude=None):
     iniciadas = []
     c.escuta.iniciar = lambda: iniciadas.append(1)
     return c, chamadas, tocadas, janelas, iniciadas
+
+
+def test_jarvis_com_pergunta_vai_direto_e_abre_a_janela(dados_tmp):
+    c, chamadas, tocadas, janelas, iniciadas = _cerebro(dados_tmp, saude={})
+    enviadas = []
+    c.mensagem_usuario = lambda texto, falada: enviadas.append((texto, falada))
+    c.palavra_jarvis("como está o app de saúde?")
+    assert enviadas == [("como está o app de saúde?", True)]
+    assert janelas == [1] and c.janela_aberta and tocadas == [] and iniciadas == []
 
 
 def test_jarvis_cala_cumprimenta_e_abre_ouvindo(dados_tmp):

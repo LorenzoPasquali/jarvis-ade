@@ -39,7 +39,11 @@ class TocadorFalso:
 
 
 class TranscritorFalso:
-    def transcrever(self, caminho: str) -> str:
+    def __init__(self):
+        self.max_tokens = []
+
+    def transcrever(self, caminho: str, max_tokens: int | None = None) -> str:
+        self.max_tokens.append(max_tokens)
         return "texto falso"
 
 
@@ -114,6 +118,7 @@ def test_http_rotas(servidor_falso):
     with urllib.request.urlopen(servidor_falso + "/saude", timeout=3) as r:
         assert json.loads(r.read())["ok"] is True
     assert post(servidor_falso, "/transcrever", {"caminho": "/tmp/x.wav"}) == (200, {"texto": "texto falso"})
+    assert post(servidor_falso, "/transcrever", {"caminho": "/tmp/x.wav", "max_tokens": 8})[0] == 200
     assert post(servidor_falso, "/mudo", {"ligado": True})[0] == 200
     assert post(servidor_falso, "/parar", {})[0] == 200
     assert post(servidor_falso, "/ouvindo", {"ligado": False})[0] == 200

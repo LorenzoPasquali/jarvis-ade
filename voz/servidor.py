@@ -183,9 +183,15 @@ class TranscritorWhisper:
 
         self._pipeline = pipeline("automatic-speech-recognition", model="openai/whisper-large-v3-turbo",
                                   dtype=torch.float16, device="cuda:0")
+        self._trava = threading.Lock()  # a escuta e o ouvido do "Jarvis" podem pedir ao mesmo tempo
 
-    def transcrever(self, caminho: str) -> str:
-        resultado = self._pipeline(caminho, generate_kwargs={"task": "transcribe", "language": "portuguese"})
+    def transcrever(self, caminho: str, max_tokens: int | None = None) -> str:
+        """`max_tokens`: decodifica só o começo (o ouvido só quer saber se a frase começa com "Jarvis")."""
+        opcoes = {"task": "transcribe", "language": "portuguese"}
+        if max_tokens:
+            opcoes["max_new_tokens"] = max_tokens
+        with self._trava:
+            resultado = self._pipeline(caminho, generate_kwargs=opcoes)
         return (resultado.get("text") or "").strip()
 
 
@@ -240,7 +246,9 @@ def criar_servidor(locutor: Locutor, transcritor, porta: int) -> ThreadingHTTPSe
                 self._responder(200, {"ok": True})
             elif self.path == "/transcrever":
                 try:
-                    self._responder(200, {"texto": transcritor.transcrever(str(corpo.get("caminho") or ""))})
+                    max_tokens = int(corpo["max_tokens"]) if corpo.get("max_tokens") else None
+                    self._responder(200, {"texto": transcritor.transcrever(str(corpo.get("caminho") or ""),
+                                                                          max_tokens)})
                 except Exception as erro:
                     self._responder(500, {"erro": repr(erro)})
             else:
