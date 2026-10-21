@@ -78,6 +78,7 @@ class Escuta:
         self._proc_pronto = threading.Event()
         self._erro_gravador: OSError | None = None
         self._encerrar = threading.Event()
+        self._cancelada = False
         self._trava = threading.Lock()
         self.ativa = False
 
@@ -87,6 +88,7 @@ class Escuta:
                 return
             self.ativa = True
         self._encerrar.clear()
+        self._cancelada = False
         self._chamar("/parar")
         self._chamar("/ouvindo", {"ligado": True})
         arquivo = dados() / "escuta.wav"
@@ -123,6 +125,11 @@ class Escuta:
             self._proc.wait()
 
     def encerrar(self) -> None:
+        self._encerrar.set()
+
+    def cancelar(self) -> None:
+        """Para de ouvir na hora e descarta o que gravou (o senhor fechou a janela)."""
+        self._cancelada = True
         self._encerrar.set()
 
     def _acompanhar(self, arquivo) -> None:
@@ -168,7 +175,7 @@ class Escuta:
                 self._ao_nivel(nivel)
             resultado = detector.alimentar(nivel, time.time() - inicio)
         self._parar_gravacao()
-        if resultado != "fim" or offset is None or not arquivo.exists():
+        if resultado != "fim" or self._cancelada or offset is None or not arquivo.exists():
             return None
         # `offset` é o cursor de leitura, que no fim já aponta para o fim do PCM.
         # A duração precisa usar o início dos dados do WAV, não o cursor avançado.

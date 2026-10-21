@@ -78,6 +78,9 @@ def transcricao_util(texto: str, duracao_s: float) -> str | None:
         return None
     if normalizado in {_normalizar(a) for a in _ALUCINACOES} or _CREDITOS_LEGENDA.search(normalizado):
         return None
+    palavras = normalizado.split()
+    if len(palavras) >= 8 and len(set(palavras)) / len(palavras) < 0.3:
+        return None  # o Whisper em ruído repete a mesma coisa: "E aí E aí E aí…"
     return texto
 
 

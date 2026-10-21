@@ -308,3 +308,20 @@ def test_ferramentas_viram_progresso_em_texto(dados_tmp):
     assert [p["texto"] for p in publicados if p["tipo"] == "progresso"] == [
         "Consultando os projetos…", "Pesquisando na web: notícias IA hoje"]
     assert cerebro_main.descrever_ferramenta("Bash", {"command": "ls -la /git"}) == "Rodando: ls -la /git"
+
+
+def test_esc_para_de_ouvir_na_hora(dados_tmp):
+    c, *_ = _cerebro(dados_tmp, saude={})
+    canceladas, esperas = [], []
+    c.escuta.ativa = True
+    c.escuta.cancelar = lambda: canceladas.append(1)
+    c.ouvido = type("O", (), {"cancelar_espera": lambda self: esperas.append(1)})()
+    c._estado = "ouvindo"
+    c.fechar_janela()
+    assert canceladas == [1] and esperas == [1] and c._estado == "ocioso" and not c.janela_aberta
+
+
+def test_whisper_repetindo_em_ruido_e_descartado():
+    from jarvis.voz_cliente import transcricao_util
+    assert transcricao_util("E aí " * 40, 10.0) is None
+    assert transcricao_util("Não, não, não, espera: abre o portfólio primeiro", 3.0)

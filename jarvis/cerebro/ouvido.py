@@ -145,6 +145,11 @@ class Ouvido:
     def esperando_pergunta(self) -> bool:
         return self._pergunta_ate > 0
 
+    def cancelar_espera(self) -> None:
+        """O senhor fechou a janela: não pega mais pergunta até o próximo "Jarvis"."""
+        with self._trava:
+            self._pergunta_ate = 0.0
+
     def _laco(self) -> None:
         while not self._parando.is_set():
             try:

@@ -138,6 +138,7 @@ class Cerebro:
         self._atendido_na_reserva: list[dict] = []  # o que o Claude ainda não sabe que foi conversado
         self._ultima_palavra = 0.0
         self._fala_atual = ""
+        self.ouvido = None
         self.mostrar_janela: Callable[[], None] = _mostrar_janela
         self.tocar: Callable[[Path], None] = _tocar
         self.janela_aberta = False
@@ -283,11 +284,20 @@ class Cerebro:
     def super_j(self) -> None:
         self.janela_aberta = True
         if not self.escuta.ativa:
+            if self._ocupado():
+                self._calar_turno = True  # o senhor quer falar: o resto da resposta em andamento fica só no texto
             self._definir_estado("ouvindo")
             self.escuta.iniciar()
 
     def fechar_janela(self) -> None:
+        """Esc ou ×: para de ouvir na hora; só volta com "Jarvis" ou Super+J."""
         self.janela_aberta = False
+        if self.escuta.ativa:
+            self.escuta.cancelar()
+        if self.ouvido is not None:
+            self.ouvido.cancelar_espera()
+        if self._estado == "ouvindo":
+            self._definir_estado("pensando" if self._ocupado() else "ocioso")
 
     def _ao_nivel(self, nivel: float) -> None:
         self.publicar({"tipo": "nivel", "valor": round(nivel, 4)})

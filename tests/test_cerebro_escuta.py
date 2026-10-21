@@ -180,3 +180,26 @@ def test_iniciar_duas_vezes_ao_mesmo_tempo_cria_um_gravador(tmp_path, monkeypatc
     [t.join() for t in threads]
     e.encerrar()
     assert len(criados) == 1
+
+
+def test_cancelar_descarta_a_gravacao_sem_transcrever(dados_tmp):
+    import sys
+    import threading
+
+    from jarvis.cerebro.escuta import Escuta
+
+    arquivo = dados_tmp / "escuta.wav"
+    gravador = [sys.executable, "-c", (
+        "import struct, sys, time, wave\n"
+        f"w = wave.open({str(arquivo)!r}, 'wb'); w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000)\n"
+        "while True:\n"
+        "    w.writeframes(struct.pack('<1600h', *([8000, -8000] * 800))); w._file.flush(); time.sleep(0.1)\n")]
+    chamadas, fim, resultado = [], threading.Event(), {}
+    e = Escuta(lambda n: None, lambda t: (resultado.setdefault("texto", t), fim.set()),
+               chamar=lambda rota, corpo=None, **k: chamadas.append(rota) or {"texto": "não devia"},
+               comando=gravador)
+    e.iniciar()
+    threading.Event().wait(0.6)  # fala em andamento
+    e.cancelar()
+    assert fim.wait(3)
+    assert resultado["texto"] is None and "/transcrever" not in chamadas
