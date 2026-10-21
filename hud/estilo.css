@@ -361,11 +361,65 @@ body[data-estado="desconectado"] .estado { color: var(--nevoa); }
   translate: -50% 0;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
   gap: 14px;
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 38%);
-  mask-image: linear-gradient(to bottom, transparent 0, #000 38%);
+  padding-right: 10px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--linha-forte) transparent;
+  transition: top 420ms cubic-bezier(.2, .7, .2, 1);
+}
+
+/* poucas mensagens ficam encostadas embaixo; muitas rolam normalmente (justify-content: flex-end impediria rolar) */
+#conversa > :first-child { margin-top: auto; }
+
+/* esmaece o topo só quando há texto escondido acima */
+#conversa[data-topo="false"] {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 64px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 64px);
+}
+
+#conversa::-webkit-scrollbar { width: 6px; }
+#conversa::-webkit-scrollbar-thumb { border-radius: 3px; background: var(--linha-forte); }
+#conversa::-webkit-scrollbar-track { background: transparent; }
+
+#ir-ao-fim {
+  position: absolute;
+  left: 50%;
+  bottom: 196px;
+  translate: -50% 0;
+  padding: 6px 16px;
+  border: 1px solid var(--linha-forte);
+  border-radius: 999px;
+  background: rgba(2, 9, 14, 0.85);
+  color: var(--holo);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* ---------- modo leitura: o núcleo recua para o topo e a conversa ganha a coluna ---------- */
+
+#orbita { transition: transform 420ms cubic-bezier(.2, .7, .2, 1); }
+#sessoes, #ligacoes { transition: opacity 240ms ease-out; }
+
+body.leitura #orbita { transform: translateY(calc(70px - var(--centro-y))) scale(0.34); }
+body.leitura #sessoes,
+body.leitura #ligacoes { opacity: 0; visibility: hidden; }
+body.leitura .estado { scale: 2.4; transform-origin: 50% 0; }
+body.leitura #conversa { top: 150px; }
+
+#voltar-orbita {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  width: 116px;
+  height: 116px;
+  translate: -50% 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
 }
 
 .msg { margin: 0; }
@@ -578,5 +632,6 @@ html.fundo-teste body::before {
   body.aberto .arcos, body.aberto .no,
   body[data-estado] .arcos, body[data-estado] .segmentos, body[data-estado] .ondas circle,
   .no::before, .msg.jarvis.escrevendo::after, .progresso { animation: none !important; }
+  #orbita, #conversa, #sessoes, #ligacoes { transition: none; }
   body[data-estado="falando"] .ondas circle:first-child { opacity: 0.6; transform: scale(1.4); }
 }

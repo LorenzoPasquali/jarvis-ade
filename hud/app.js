@@ -25,7 +25,7 @@
   };
   const PRECISA_DO_SENHOR = new Set(["waiting", "permission", "blocked"]);
   const NOME_PENDENCIA = { enviar: "Confirmar envio", regra: "Nova regra", lancar: "Abrir agente", permissao: "Permissão" };
-  const MAX_MENSAGENS = 12;
+  const MAX_MENSAGENS = 40;
 
   let respostaAtual = null;
   let ultimasSessoes = null;
@@ -258,6 +258,56 @@
     if (valor !== "ouvindo") $("nucleo").style.setProperty("--nivel", 0);
   }
 
+  // ---------- rolagem e modo leitura ----------
+  // A conversa rola livremente. Só acompanha o fim se o senhor já estiver nele; uma resposta que não cabe na
+  // faixa (ou rolar para cima) abre o modo leitura: o núcleo encolhe no topo e a conversa ganha a coluna toda.
+
+  let seguirFim = true;
+
+  function noFim() {
+    const c = $("conversa");
+    return c.scrollHeight - c.scrollTop - c.clientHeight < 24;
+  }
+
+  function atualizarRolagem() {
+    const c = $("conversa");
+    c.dataset.topo = String(c.scrollTop < 4);
+    $("ir-ao-fim").hidden = seguirFim;
+  }
+
+  function irAoFim() {
+    seguirFim = true;
+    $("conversa").scrollTop = $("conversa").scrollHeight;
+    atualizarRolagem();
+  }
+
+  function entrarLeitura() {
+    if (document.body.classList.contains("leitura")) return;
+    document.body.classList.add("leitura");
+    $("voltar-orbita").hidden = false;
+  }
+
+  function sairLeitura() {
+    document.body.classList.remove("leitura");
+    $("voltar-orbita").hidden = true;
+    irAoFim();
+  }
+
+  function acompanhar() {
+    const c = $("conversa");
+    const respostas = c.querySelectorAll(".msg.jarvis");
+    const ultima = respostas[respostas.length - 1];
+    if (ultima && ultima.offsetHeight > c.clientHeight * 0.85) entrarLeitura();
+    if (seguirFim) c.scrollTop = c.scrollHeight;
+    atualizarRolagem();
+  }
+
+  $("conversa").addEventListener("scroll", () => { seguirFim = noFim(); atualizarRolagem(); });
+  $("conversa").addEventListener("wheel", (e) => { if (e.deltaY < 0) entrarLeitura(); }, { passive: true });
+  $("conversa").addEventListener("transitionend", () => { if (seguirFim) irAoFim(); });
+  $("ir-ao-fim").addEventListener("click", irAoFim);
+  $("voltar-orbita").addEventListener("click", sairLeitura);
+
   // ---------- API pública ----------
 
   function aplicar(evento) {
@@ -268,6 +318,7 @@
         // pergunta feita no meio de uma resposta: a resposta em andamento continua no mesmo balão
         if (!respostaAtual || !respostaAtual.classList.contains("escrevendo")) respostaAtual = null;
         adicionarMensagem("usuario", evento.texto);
+        seguirFim = true; // pergunta nova: a resposta aparece embaixo
         break;
       case "delta": delta(evento.texto); break;
       case "progresso": progresso(evento.texto); break;
@@ -282,15 +333,18 @@
         $("cartoes").replaceChildren();
         $("conversa").replaceChildren();
         for (const m of evento.mensagens) adicionarMensagem(m.papel, m.texto);
+        seguirFim = true;
         break;
       default: break;
     }
+    if (["usuario", "delta", "progresso", "resposta_fim", "historico"].includes(evento.tipo)) acompanhar();
   }
 
   function abrir() {
     document.body.classList.remove("aberto");
     void document.body.offsetWidth; // reinicia a animação de abertura
     document.body.classList.add("aberto");
+    sairLeitura(); // cada abertura começa na órbita, já no fim da conversa
     $("texto").focus();
   }
 
@@ -310,7 +364,15 @@
 
   // ---------- interação ----------
 
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") fechar(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") fechar();
+    if (e.key === "PageUp" || e.key === "PageDown") {
+      e.preventDefault();
+      if (e.key === "PageUp") entrarLeitura();
+      const c = $("conversa");
+      c.scrollBy({ top: (e.key === "PageUp" ? -1 : 1) * c.clientHeight * 0.85, behavior: "smooth" });
+    }
+  });
   $("veu").addEventListener("click", fechar);
   $("entrada").addEventListener("submit", (e) => {
     e.preventDefault();

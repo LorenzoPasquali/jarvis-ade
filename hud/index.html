@@ -54,7 +54,9 @@
       <ul id="sessoes"></ul>
     </section>
 
-    <section id="conversa" aria-live="polite" aria-label="Conversa com o Jarvis"></section>
+    <section id="conversa" aria-live="polite" aria-label="Conversa com o Jarvis" tabindex="-1"></section>
+    <button id="ir-ao-fim" type="button" hidden>Ir para o fim</button>
+    <button id="voltar-orbita" type="button" aria-label="Voltar à órbita dos agentes" hidden></button>
     <section id="cartoes" aria-label="Confirmações"></section>
 
     <form id="entrada" autocomplete="off">
@@ -63,7 +65,7 @@
       <input id="texto" name="texto" placeholder="Fale ou digite para o Jarvis">
       <button type="submit">Enviar</button>
     </form>
-    <p class="dica">Super+J para iniciar; fale e aguarde um instante em silêncio. Esc fecha.</p>
+    <p class="dica">Super+J para falar. Role a conversa ou use PageUp para ler tudo. Esc fecha.</p>
   </main>
 
   <script src="app.js"></script>
