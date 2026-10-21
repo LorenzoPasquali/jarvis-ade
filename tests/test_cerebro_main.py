@@ -8,6 +8,7 @@ import pytest
 
 from jarvis import eventos, pendencias
 from jarvis.cerebro import main as cerebro_main
+from jarvis.cerebro import reserva
 from jarvis.cerebro.eventos import FilaEventos
 from jarvis.cerebro.main import Cerebro
 from jarvis.cerebro.servidor import criar
@@ -316,13 +317,18 @@ def test_erro_do_claude_vira_aviso_curto_e_pausa_eventos(cerebro_falso):
     assert claude.enviados == []
 
 
-def test_erro_do_claude_reenvia_o_turno_atual_ao_codex(dados_tmp):
+def test_erro_do_claude_reenvia_o_turno_atual_ao_codex(dados_tmp, monkeypatch):
+    monkeypatch.setattr(reserva, "estado_orca", lambda: "• app-saude [claude] concluiu há 3 h")
     claude, codex = ClaudeFalso(), CodexFalso()
     c = Cerebro(claude=claude, codex=codex, falar=lambda t: True, bloqueada=lambda: False,
                 chamar_voz=lambda *a, **k: {})
     c.mensagem_usuario("como estão os projetos?", falada=False)
     c.ao_evento_claude({"type": "result", "is_error": True, "result": "usage limit"})
-    assert codex.enviados == ["como estão os projetos?"]
+    [enviado] = codex.enviados
+    assert enviado.startswith(reserva.INSTRUCOES)
+    assert "• app-saude [claude] concluiu" in enviado
+    assert enviado.endswith("## Mensagem atual\ncomo estão os projetos?")
+    assert enviado.count("como estão os projetos?") == 1  # a mensagem atual não se repete na conversa recente
     assert c._estado == "pensando"
 
 

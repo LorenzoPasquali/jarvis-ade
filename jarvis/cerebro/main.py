@@ -13,6 +13,7 @@ from datetime import datetime
 
 from jarvis import consultas, orca, pendencias, turno, voz_cliente
 from jarvis.cerebro import escuta as escuta_mod
+from jarvis.cerebro import reserva
 from jarvis.cerebro.eventos import FilaEventos
 from jarvis.cerebro.fala import SeparadorFala
 from jarvis.config import RAIZ, dados
@@ -214,7 +215,10 @@ class Cerebro:
         self._separador.reiniciar()
         self.publicar({"tipo": "resposta_fim", "texto": ""})
         self._definir_estado("pensando")
-        processo.enviar(self._entrada_atual[0])
+        historico = self._historico()
+        if self._entrada_atual[1] in ("voz", "texto") and historico and historico[-1]["papel"] == "usuario":
+            historico = historico[:-1]  # a mensagem atual já vai no fim
+        processo.enviar(reserva.mensagem(self._entrada_atual[0], historico))
         return True
 
     def _ao_evento_modelo(self, evento: dict, provedor: str) -> None:

@@ -8,7 +8,8 @@ from pathlib import Path
 
 
 def comando_codex(modelo: str | None = None) -> list[str]:
-    comando = ["codex", "exec"]
+    # Somente leitura também no `exec resume`, que não aceita --sandbox.
+    comando = ["codex", "-c", 'sandbox_mode="read-only"', "exec"]
     if modelo:
         comando.extend(["--model", modelo])
     return comando
@@ -45,15 +46,15 @@ class ProcessoCodex:
             instrucoes = self._persona.read_text(encoding="utf-8")
         except OSError:
             instrucoes = ""
-        return ("Você é o fallback temporário do Jarvis. Siga integralmente estas instruções permanentes "
-                "e responda à mensagem atual. Não edite arquivos.\n\n"
+        return ("Você é o Jarvis no modo reserva. Siga a persona abaixo, exceto onde a mensagem do modo reserva "
+                "disser o contrário (no modo reserva você não roda comandos nem edita arquivos).\n\n"
                 f"{instrucoes}\n\nMensagem atual:\n{texto}")
 
     def comando_atual(self, texto: str) -> list[str]:
         thread_id = self._thread()
         if thread_id:
             return [*self._comando, "resume", thread_id, "--json", "--skip-git-repo-check", texto]
-        return [*self._comando, "--json", "--sandbox", "workspace-write", "--skip-git-repo-check", texto]
+        return [*self._comando, "--json", "--skip-git-repo-check", texto]
 
     def enviar(self, texto: str) -> None:
         with self._trava:

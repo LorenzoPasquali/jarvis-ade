@@ -53,17 +53,9 @@ class ProcessoGemini:
             instrucoes = self._persona.read_text(encoding="utf-8") if self._persona else ""
         except OSError:
             instrucoes = ""
-        return ("Você é o Jarvis. Siga a persona abaixo e responda à mensagem atual. "
-                "Use as ferramentas disponíveis para consultar projetos e pesquisar informações. "
-                "Para ações, siga os comandos e confirmações do Jarvis descritos na persona; nunca envie diretamente "
-                "para terminais nem inicie agentes por comandos diretos do Orca. Não afirme que fez algo se a ferramenta "
-                "não confirmou a execução.\n\n"
+        return ("Você é o Jarvis. Siga a persona abaixo, exceto onde a mensagem do modo reserva disser o "
+                "contrário (no modo reserva você não roda comandos).\n\n"
                 f"{instrucoes}\n\n"
-                "Regras específicas desta contingência: use search_web e read_url_content para pesquisar e ler páginas "
-                "públicas quando necessário; leitura web não inclui clicar, preencher formulários ou executar ações em páginas. "
-                "Para consultar projetos e sessões, use somente comandos de leitura do Orca, como project list, repo list/show, "
-                "worktree list/show/current/ps e terminal list/show/read. Não use comandos diretos do Orca para enviar mensagens "
-                "ou iniciar agentes.\n\nMensagem atual:\n"
                 f"{texto}")
 
     def enviar(self, texto: str) -> None:
