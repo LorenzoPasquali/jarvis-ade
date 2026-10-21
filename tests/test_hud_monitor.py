@@ -72,3 +72,31 @@ def test_sem_janela_ativa_usa_o_monitor_do_ponteiro(janela):
 
 def test_monitor_desconhecido_cai_no_padrao(janela):
     assert janela.monitor_do_foco(Tela(Display([object()], do_ponteiro=object()), ativa=None)) is None
+
+
+class Ativa:
+    def __init__(self, xid):
+        self.xid = xid
+
+    def get_xid(self):
+        return self.xid
+
+
+def _xprop(monkeypatch, janela, saida):
+    class R:
+        stdout = saida
+    monkeypatch.setattr(janela.subprocess, "run", lambda *a, **k: R())
+
+
+def test_app_na_frente_abre_compacto(janela, monkeypatch):
+    _xprop(monkeypatch, janela, "_NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_NORMAL\n")
+    assert janela.app_em_foco(Tela(None, ativa=Ativa(0x3200003)), proprias={0x260000d})
+
+
+def test_area_de_trabalho_minimizado_ou_o_proprio_jarvis_abrem_inteiro(janela, monkeypatch):
+    _xprop(monkeypatch, janela, "_NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_DESKTOP\n")
+    assert not janela.app_em_foco(Tela(None, ativa=Ativa(0x1)), proprias=set())
+    _xprop(monkeypatch, janela, "_NET_WM_WINDOW_TYPE_NORMAL\n_NET_WM_STATE(ATOM) = _NET_WM_STATE_HIDDEN\n")
+    assert not janela.app_em_foco(Tela(None, ativa=Ativa(0x2)), proprias=set())
+    assert not janela.app_em_foco(Tela(None, ativa=None), proprias=set())
+    assert not janela.app_em_foco(Tela(None, ativa=Ativa(0x260000d)), proprias={0x260000d})

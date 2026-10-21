@@ -8,6 +8,7 @@ a página pede para esconder com `webkit.messageHandlers.jarvis.postMessage("fec
 import argparse
 import os
 import signal
+import subprocess
 import sys
 from pathlib import Path
 
@@ -61,6 +62,19 @@ def monitor_do_foco(tela: Gdk.Screen) -> int | None:
     return next((i for i in range(display.get_n_monitors()) if display.get_monitor(i) == monitor), None)
 
 
+def app_em_foco(tela: Gdk.Screen, proprias: set[int]) -> bool:
+    """Há um app na frente (Orca, Chrome…)? Sem janela ativa, ou com a área de trabalho ativa, não há."""
+    ativa = tela.get_active_window()
+    if ativa is None or ativa.get_xid() in proprias:
+        return False
+    try:
+        props = subprocess.run(["xprop", "-id", hex(ativa.get_xid()), "_NET_WM_WINDOW_TYPE", "_NET_WM_STATE"],
+                               capture_output=True, text=True, timeout=1).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return True
+    return "_NET_WM_WINDOW_TYPE_DESKTOP" not in props and "_NET_WM_STATE_HIDDEN" not in props
+
+
 def _carregar_depois(web: WebKit2.WebView, uri: str | None) -> bool:
     if uri:
         GLib.timeout_add(1000, lambda: web.load_uri(uri) and GLib.SOURCE_REMOVE)
@@ -81,13 +95,44 @@ class JanelaJarvis:
         self.janela.add(self.web)
         self.web.load_uri(url)
         self.web.show()
+        self.aviso_web: WebKit2.WebView | None = None
         self.aviso = self._criar_aviso(url) if com_aviso else None
 
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1, self.mostrar)
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, self._sair)
 
     def mostrar(self, *_args) -> bool:
+        """Super+J ou "Jarvis": com um app na frente, a conversa fica no canto (compacta); sem nada, janela inteira."""
+        tela = self.janela.get_screen()
+        if (self.aviso is not None and not self.janela.get_visible()
+                and app_em_foco(tela, self._proprias())):
+            self.mostrar_compacta()
+        else:
+            self.mostrar_completa()
+        return GLib.SOURCE_CONTINUE
+
+    def _proprias(self) -> set[int]:
+        return {j.get_window().get_xid() for j in (self.janela, self.aviso) if j and j.get_window()}
+
+    def _js_aviso(self, codigo: str) -> None:
+        if self.aviso_web is not None:
+            self.aviso_web.evaluate_javascript(codigo, -1, None, None, None, None, None)
+
+    def _posicionar_aviso(self) -> None:
+        display = self.aviso.get_display()
+        indice = monitor_do_foco(self.aviso.get_screen())
+        monitor = display.get_monitor(indice) if indice is not None else display.get_primary_monitor()
+        area = (monitor or display.get_monitor(0)).get_workarea()  # sem a barra do topo
+        self.aviso.move(area.x + area.width - LARGURA_AVISO - 24, area.y + 16)
+
+    def mostrar_compacta(self) -> None:
+        self._posicionar_aviso()
+        self.aviso.show()
+        self._js_aviso("window.jarvis && window.jarvis.compacto(true)")
+
+    def mostrar_completa(self) -> None:
         if self.aviso is not None:
+            self._js_aviso("window.jarvis && window.jarvis.compacto(false)")
             self.aviso.hide()
         tela = self.janela.get_screen()
         indice = monitor_do_foco(tela)
@@ -99,27 +144,25 @@ class JanelaJarvis:
         self.janela.present_with_time(Gtk.get_current_event_time() or 0)
         self.web.grab_focus()
         self.web.evaluate_javascript("window.jarvis && window.jarvis.abrir()", -1, None, None, None, None, None)
-        return GLib.SOURCE_CONTINUE
 
     def esconder(self) -> None:
         self.janela.hide()
 
     def _criar_aviso(self, url: str) -> Gtk.Window:
-        """Faixa no canto da tela com a última fala, só quando a janela principal está fechada; nunca pega foco."""
+        """Faixa no canto da tela, que nunca pega foco: a última fala (janela fechada) ou a conversa compacta."""
         aviso = Gtk.Window(title="Jarvis — aviso")
         _janela_transparente(aviso)
         aviso.set_accept_focus(False)
         aviso.set_focus_on_map(False)
         aviso.set_type_hint(Gdk.WindowTypeHint.NOTIFICATION)
         aviso.set_default_size(LARGURA_AVISO, ALTURA_AVISO)
-        display = aviso.get_display()
-        monitor = display.get_primary_monitor() or display.get_monitor(0)
-        area = monitor.get_geometry()  # a tela X junta todos os monitores: o aviso fica no principal
-        aviso.move(area.x + area.width - LARGURA_AVISO - 24, area.y + 24)
         web = _webview(self._ao_mensagem_aviso)
+        self.aviso_web = web
         aviso.add(web)
         web.load_uri(url.split("?", 1)[0].rstrip("/") + "/aviso.html")
         web.show()
+        self.aviso = aviso
+        self._posicionar_aviso()
         return aviso
 
     def _ao_mensagem(self, _gerente, resultado) -> None:
@@ -129,9 +172,15 @@ class JanelaJarvis:
     def _ao_mensagem_aviso(self, _gerente, resultado) -> None:
         valor = _texto(resultado)
         if valor == "mostrar_aviso" and not self.janela.get_visible():
+            self._posicionar_aviso()
             self.aviso.show()
-        elif valor == "esconder_aviso":
+        elif valor in ("esconder_aviso", "fechar_compacto"):
             self.aviso.hide()
+        elif valor == "expandir":
+            self.mostrar_completa()
+        elif valor.startswith("altura:"):
+            altura = max(ALTURA_AVISO, min(520, int(valor.split(":", 1)[1])))
+            self.aviso.resize(LARGURA_AVISO, altura)
 
     def _ao_fechar(self, *_args) -> bool:
         self.esconder()

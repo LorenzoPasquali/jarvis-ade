@@ -6,19 +6,18 @@
   <style>
     @font-face { font-family: "Michroma"; src: url("fontes/michroma.woff2") format("woff2"); }
     @font-face { font-family: "Saira"; src: url("fontes/saira.woff2") format("woff2"); font-weight: 100 900; font-stretch: 50% 125%; }
-    html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+    :root {
+      --holo: #8BE9FF; --gelo: #EAF8FF; --nevoa: #7FA3B3; --ambar: #FFB84D;
+      --linha: rgba(139, 233, 255, 0.4); --nivel: 0;
+    }
+    html, body { margin: 0; background: transparent; overflow: hidden; }
     #aviso {
-      position: absolute;
-      inset: 8px;
-      display: grid;
-      grid-template-columns: 34px 1fr;
-      align-items: center;
-      gap: 14px;
+      margin: 8px;
       padding: 14px 18px;
-      border: 1px solid rgba(139, 233, 255, 0.4);
+      border: 1px solid var(--linha);
       border-radius: 14px;
-      background: rgba(2, 9, 14, 0.86);
-      color: #EAF8FF;
+      background: rgba(2, 9, 14, 0.9);
+      color: var(--gelo);
       font: 15px/1.4 "Saira", system-ui, sans-serif;
       font-stretch: 92%;
       opacity: 0;
@@ -26,44 +25,198 @@
       transition: opacity 220ms ease-out, translate 220ms ease-out;
     }
     #aviso.visivel { opacity: 1; translate: 0 0; }
+
+    .topo { display: flex; align-items: center; gap: 12px; }
     .anel {
-      width: 30px; height: 30px; border-radius: 50%;
-      border: 1.5px solid #8BE9FF;
+      flex: none;
+      width: 28px; height: 28px; border-radius: 50%;
+      border: 1.5px solid var(--holo);
       box-shadow: 0 0 14px rgba(139, 233, 255, 0.5), inset 0 0 10px rgba(139, 233, 255, 0.35);
+      transform: scale(calc(1 + var(--nivel) * 0.35));
+      transition: transform 90ms linear;
     }
-    .nome { display: block; font-family: "Michroma", sans-serif; font-size: 11px; letter-spacing: 0.14em; color: #8BE9FF; }
-    #texto {
-      display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+    body[data-estado="pensando"] .anel { border-style: dashed; animation: girar 1.6s linear infinite; }
+    body[data-estado="falando"] .anel { animation: pulsar 1.2s ease-in-out infinite; }
+    @keyframes girar { to { rotate: 360deg; } }
+    @keyframes pulsar { 50% { box-shadow: 0 0 22px rgba(139, 233, 255, 0.8), inset 0 0 12px rgba(139, 233, 255, 0.5); } }
+
+    .titulo { flex: 1; min-width: 0; }
+    .nome { display: block; font-family: "Michroma", sans-serif; font-size: 11px; letter-spacing: 0.14em; color: var(--holo); }
+    #estado { display: block; font-size: 13px; color: var(--nevoa); }
+
+    .acoes { display: none; gap: 6px; }
+    body.compacto .acoes { display: flex; }
+    .acoes button {
+      padding: 4px 12px;
+      border: 1px solid var(--linha);
+      border-radius: 999px;
+      background: transparent;
+      color: var(--holo);
+      font: inherit;
+      font-size: 13px;
+      cursor: pointer;
     }
-    @media (prefers-reduced-motion: reduce) { #aviso { transition: none; translate: 0 0; } }
+    .acoes button:hover { border-color: var(--holo); background: rgba(139, 233, 255, 0.12); }
+    #fechar { padding: 4px 10px; }
+
+    /* notificação: só a última fala, curta */
+    #texto { margin: 10px 0 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    #texto:empty { display: none; }
+    body.compacto #texto { display: none; }
+
+    /* conversa compacta: a pergunta e a resposta em andamento */
+    #conversa { display: none; }
+    body.compacto #conversa { display: block; }
+    #pergunta { margin: 10px 0 0; padding-left: 10px; border-left: 2px solid var(--linha); color: var(--nevoa); font-size: 14px; }
+    #resposta { margin: 8px 0 0; max-height: 300px; overflow-y: auto; scrollbar-width: thin; }
+    #resposta p { margin: 0 0 6px; }
+    #resposta::-webkit-scrollbar { width: 5px; }
+    #resposta::-webkit-scrollbar-thumb { border-radius: 3px; background: var(--linha); }
+    #progresso { margin: 6px 0 0; font-size: 13px; font-style: italic; color: var(--nevoa); }
+    #pergunta:empty, #resposta:empty, #progresso:empty { display: none; }
+    #confirmacao { margin: 8px 0 0; color: var(--ambar); font-size: 14px; }
+
+    @media (prefers-reduced-motion: reduce) {
+      #aviso { transition: none; translate: 0 0; }
+      .anel { animation: none !important; transition: none; }
+    }
   </style>
 </head>
-<body>
+<body data-estado="ocioso">
   <div id="aviso" role="status" aria-live="polite">
-    <span class="anel" aria-hidden="true"></span>
-    <p><span class="nome">Jarvis</span><span id="texto"></span></p>
+    <div class="topo">
+      <span class="anel" aria-hidden="true"></span>
+      <p class="titulo" style="margin:0"><span class="nome">Jarvis</span><span id="estado"></span></p>
+      <div class="acoes">
+        <button id="expandir" type="button">Expandir</button>
+        <button id="fechar" type="button" aria-label="Fechar e parar de ouvir">×</button>
+      </div>
+    </div>
+    <p id="texto"></p>
+    <div id="conversa">
+      <p id="pergunta"></p>
+      <div id="resposta"></div>
+      <p id="progresso"></p>
+      <p id="confirmacao" hidden>O Jarvis precisa da sua confirmação. Expanda para responder.</p>
+    </div>
   </div>
   <script>
     "use strict";
-    // Mostra por alguns segundos a última fala do Jarvis enquanto a janela principal está fechada.
+    // Dois modos na mesma faixa do canto da tela, que nunca toma o foco:
+    // - notificação: mostra por alguns segundos a última fala, com a janela do Jarvis fechada;
+    // - conversa compacta: o senhor chamou o Jarvis com outro app na frente; a conversa acontece aqui,
+    //   com "Expandir" para a janela inteira e "×" para fechar e parar de ouvir.
     const ponte = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.jarvis;
-    const caixa = document.getElementById("aviso");
+    const $ = (id) => document.getElementById(id);
+    const caixa = $("aviso");
+    const ROTULO = { ocioso: "Pronto", ouvindo: "Ouvindo…", pensando: "Pensando…", falando: "Falando", desconectado: "Reconectando…" };
+    const FECHA_SOZINHO_MS = 20000;
+    let compacto = false;
     let esconder = null;
-    function mostrar(texto) {
-      document.getElementById("texto").textContent = texto;
-      if (ponte) ponte.postMessage("mostrar_aviso");
+    let resposta = "";
+
+    function avisar(mensagem) { if (ponte) ponte.postMessage(mensagem); }
+
+    function medir() {
+      requestAnimationFrame(() => avisar(`altura:${Math.ceil(caixa.getBoundingClientRect().height + 16)}`));
+    }
+
+    function escapar(t) {
+      return t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+    }
+
+    function paragrafos(texto) {
+      return texto.split("\n").filter((l) => l.trim() && !l.trim().startsWith("🔊") && !l.trim().startsWith("🔇"))
+        .map((l) => `<p>${escapar(l.replace(/\*\*(.+?)\*\*/g, "$1").replace(/^\s*[-*]\s+/, "• "))}</p>`).join("");
+    }
+
+    function definirEstado(valor) {
+      document.body.dataset.estado = valor;
+      $("estado").textContent = ROTULO[valor] || valor;
+      if (valor !== "ouvindo") document.body.style.setProperty("--nivel", 0);
+      if (compacto) agendarFechar();
+    }
+
+    // Sem nada acontecendo por um tempo depois da resposta, a conversa compacta some (e o Jarvis para de ouvir).
+    function agendarFechar() {
+      clearTimeout(esconder);
+      if (document.body.dataset.estado === "ocioso") esconder = setTimeout(fechar, FECHA_SOZINHO_MS);
+    }
+
+    function fechar() {
+      clearTimeout(esconder);
+      fetch("/api/fechar", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
+        .catch(() => null);
+      sair();
+    }
+
+    function sair() {
+      compacto = false;
+      document.body.classList.remove("compacto");
+      caixa.classList.remove("visivel");
+      setTimeout(() => avisar("fechar_compacto"), 230);
+    }
+
+    function notificar(texto) {
+      if (compacto) return;
+      $("texto").textContent = texto;
+      avisar("mostrar_aviso");
       requestAnimationFrame(() => caixa.classList.add("visivel"));
+      medir();
       clearTimeout(esconder);
       esconder = setTimeout(() => {
         caixa.classList.remove("visivel");
-        setTimeout(() => { if (ponte) ponte.postMessage("esconder_aviso"); }, 260);
+        setTimeout(() => avisar("esconder_aviso"), 260);
       }, 6000);
     }
+
+    window.jarvis = {
+      compacto(ativo) {
+        if (!ativo) { if (compacto) sair(); return; }
+        compacto = true;
+        clearTimeout(esconder);
+        document.body.classList.add("compacto");
+        $("texto").textContent = "";
+        caixa.classList.add("visivel");
+        medir();
+        agendarFechar();
+      },
+    };
+
+    $("expandir").addEventListener("click", () => { clearTimeout(esconder); avisar("expandir"); });
+    $("fechar").addEventListener("click", fechar);
+
+    function aplicar(evento) {
+      switch (evento.tipo) {
+        case "aviso": notificar(evento.texto); return;
+        case "estado": definirEstado(evento.valor); break;
+        case "nivel": document.body.style.setProperty("--nivel", Math.min(1, evento.valor * 4)); return;
+        case "chamado": $("pergunta").textContent = ""; $("resposta").innerHTML = ""; resposta = ""; break;
+        case "usuario": $("pergunta").textContent = evento.texto; $("resposta").innerHTML = ""; resposta = ""; break;
+        case "progresso": $("progresso").textContent = evento.texto; break;
+        case "delta":
+          resposta += evento.texto;
+          $("resposta").innerHTML = paragrafos(resposta);
+          $("progresso").textContent = "";
+          break;
+        case "resposta_fim":
+          resposta = evento.texto ?? resposta;
+          $("resposta").innerHTML = paragrafos(resposta);
+          $("progresso").textContent = "";
+          break;
+        case "cartao": $("confirmacao").hidden = false; break;
+        case "cartao_fim": $("confirmacao").hidden = true; break;
+        default: return;
+      }
+      if (compacto) {
+        const r = $("resposta");
+        r.scrollTop = r.scrollHeight;
+        medir();
+      }
+    }
+
     new EventSource("/api/eventos").onmessage = (m) => {
-      try {
-        const evento = JSON.parse(m.data);
-        if (evento.tipo === "aviso") mostrar(evento.texto);
-      } catch (_) { /* evento malformado: ignora */ }
+      try { aplicar(JSON.parse(m.data)); } catch (_) { /* evento malformado: ignora */ }
     };
   </script>
 </body>
