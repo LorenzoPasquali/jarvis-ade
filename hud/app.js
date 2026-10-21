@@ -307,6 +307,7 @@
       case "delta": delta(evento.texto); break;
       case "progresso": progresso(evento.texto); break;
       case "resposta_fim": respostaFim(evento.texto); break;
+      case "chamado": sairLeitura(); $("texto").focus(); break; // "Jarvis": volta à vista padrão, ouvindo
       case "sessoes": desenharSessoes(evento.itens); break;
       case "cartao": adicionarCartao(evento); break;
       case "cartao_fim": fimCartao(evento); break;

@@ -241,33 +241,44 @@ class Cerebro:
             self._sistema = {**self._sistema, "modelo": nome}
             self.publicar(self._sistema)
 
-    def palavra_jarvis(self, resto: str = "") -> None:
-        """O senhor disse "Jarvis" (`resto`: o que veio depois, na mesma frase).
+    def palavra_jarvis(self, resto: str = "") -> float | None:
+        """O senhor disse "Jarvis" (`resto`: o que veio depois, na mesma frase). Chamado pelo ouvido.
 
-        "Jarvis, <pergunta>": a pergunta vai direto, e a janela abre para mostrar o andamento.
-        Só "Jarvis", com a janela fechada: responde na hora com a frase já gerada e abre a janela ouvindo.
-        Só "Jarvis", com a janela aberta: vale como o Super+J — cala a fala e já ouve, sem saudação.
+        A janela abre (ou volta à vista padrão, com o chat recolhido) na hora, já ouvindo.
+        "Jarvis, <pergunta>": a pergunta vai direto. Só "Jarvis": cala a fala; com a janela fechada, cumprimenta
+        com a frase já gerada. Devolve None (o ouvido não espera pergunta) ou o instante a partir do qual o áudio já
+        é do senhor (fim da saudação; 0.0 = logo depois do "Jarvis"): o próprio ouvido pega a pergunta.
         """
         agora = time.time()
         if self.escuta.ativa or self.bloqueada() or agora - self._ultima_palavra < INTERVALO_PALAVRA_S:
-            return
+            return None
         if self._estado == "falando" and "jarvis" in self._fala_atual.casefold():
-            return  # quem disse "Jarvis" foi a própria fala dele, não o senhor
+            return None  # quem disse "Jarvis" foi a própria fala dele, não o senhor
         self._ultima_palavra = agora
         self._chamar_voz("/parar")
-        if resto:
-            if not self.janela_aberta:
-                self.mostrar_janela()
-                self.janela_aberta = True
-            self.mensagem_usuario(resto, falada=True)
-            return
-        if not self.janela_aberta:
-            saudacao = frase_pronta("saudacao")
-            saude = self._chamar_voz("/saude") or {}
-            if saudacao.exists() and not saude.get("mudo"):
-                self.tocar(saudacao)  # termina antes de gravar: a saudação não entra na transcrição
+        janela_estava_aberta = self.janela_aberta
+        if not janela_estava_aberta:
             self.mostrar_janela()
-        self.super_j()
+            self.janela_aberta = True
+        self.publicar({"tipo": "chamado"})  # a janela recolhe o chat e mostra o núcleo
+        if resto:
+            self.mensagem_usuario(resto, falada=True)
+            return None
+        self._definir_estado("ouvindo")
+        if janela_estava_aberta:
+            return 0.0
+        saudacao = frase_pronta("saudacao")
+        saude = self._chamar_voz("/saude") or {}
+        if saudacao.exists() and not saude.get("mudo"):
+            self.tocar(saudacao)
+        return time.time()  # o que vier depois da saudação já é a pergunta
+
+    def pergunta_ouvida(self, texto: str | None) -> None:
+        """A pergunta que o ouvido pegou depois do "Jarvis" (None: o senhor não disse nada)."""
+        if texto:
+            self.mensagem_usuario(texto, falada=True)
+        elif not self.escuta.ativa and self._estado == "ouvindo":
+            self._definir_estado("pensando" if self._ocupado() else "ocioso")
 
     def super_j(self) -> None:
         self.janela_aberta = True
@@ -653,7 +664,8 @@ def main() -> int:
     threading.Thread(target=servidor.serve_forever, daemon=True).start()
     garantir_orca()
     cerebro.claude.iniciar()
-    cerebro.ouvido = Ouvido(cerebro.palavra_jarvis, pausado=lambda: cerebro.escuta.ativa or cerebro.bloqueada())
+    cerebro.ouvido = Ouvido(cerebro.palavra_jarvis, ao_perguntar=cerebro.pergunta_ouvida, ao_nivel=cerebro._ao_nivel,
+                            pausado=lambda: cerebro.escuta.ativa or cerebro.bloqueada())
     cerebro.ouvido.iniciar()
     print("cérebro pronto em 127.0.0.1:8766", flush=True)
     cerebro.laco()

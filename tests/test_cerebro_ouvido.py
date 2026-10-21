@@ -61,13 +61,87 @@ def test_recortador_ignora_estalo_e_falatorio_comprido():
     assert any(depois)  # depois do descarte, volta a recortar normalmente
 
 
+class Relogio:
+    def __init__(self):
+        self.t = 1000.0
+
+    def blocos(self, o, recortador, blocos):
+        for b in blocos:
+            self.t += 0.1
+            o.processar(recortador, b, self.t)
+
+
+def _modo_pergunta(transcricoes, desde_saudacao=None):
+    """Ouvido com transcrições roteiradas; `ao_chamar` devolve o fim da saudação (ou 0)."""
+    eventos = []
+
+    def chamar(rota, corpo=None, timeout=3.0):
+        eventos.append(("transcrever", corpo.get("max_tokens")))
+        return {"texto": transcricoes.pop(0)}
+
+    def ao_chamar(resto):
+        eventos.append(("chamado", resto))
+        return desde_saudacao() if desde_saudacao else 0.0
+    o = ouvido_mod.Ouvido(ao_chamar, ao_perguntar=lambda t: eventos.append(("pergunta", t)), chamar=chamar,
+                          ao_nivel=lambda n: eventos.append(("nivel", None)))
+    return o, eventos
+
+
+def _rodar_conferencias(o, monkeypatch):
+    """Roda `conferir` e a transcrição da pergunta na hora, sem threads."""
+    class ThreadNaHora:
+        def __init__(self, target, args=(), daemon=None):
+            self.target, self.args = target, args
+
+        def start(self):
+            self.target(*self.args)
+    monkeypatch.setattr(ouvido_mod.threading, "Thread", ThreadNaHora)
+
+
+def test_jarvis_sozinho_e_a_pergunta_seguinte_sem_perder_o_comeco(dados_tmp, monkeypatch):
+    o, eventos = _modo_pergunta(["Jarvis.", "Como está o app de saúde?"])
+    _rodar_conferencias(o, monkeypatch)
+    r, relogio = Recortador(), Relogio()
+    relogio.blocos(o, r, [SILENCIO] * 20 + [FALA] * 5 + [SILENCIO] * 8)  # "Jarvis" + 0,8 s
+    assert ("chamado", "") in eventos and o.esperando_pergunta
+    relogio.blocos(o, r, [FALA] * 15 + [SILENCIO] * 11)  # a pergunta, emendada logo depois
+    assert eventos[-1] == ("pergunta", "Como está o app de saúde?")
+    assert ("transcrever", None) in eventos and not o.esperando_pergunta
+    assert ("nivel", None) in eventos  # o núcleo pulsa com a voz enquanto espera
+
+
+def test_a_saudacao_nao_vira_pergunta(dados_tmp, monkeypatch):
+    relogio = Relogio()
+    fim_saudacao = []
+    o, eventos = _modo_pergunta(["Jarvis.", "Que horas são?"], desde_saudacao=lambda: fim_saudacao[-1])
+    _rodar_conferencias(o, monkeypatch)
+    r = Recortador()
+    relogio.blocos(o, r, [SILENCIO] * 20 + [FALA] * 5)
+    fim_saudacao.append(relogio.t + 2.4)  # o "Jarvis" termina e a saudação toca até aqui
+    relogio.blocos(o, r, [SILENCIO] * 8)
+    relogio.blocos(o, r, [FALA] * 15 + [SILENCIO] * 11)  # a própria saudação, captada pelo microfone
+    assert not any(e[0] == "pergunta" for e in eventos) and o.esperando_pergunta
+    relogio.blocos(o, r, [FALA] * 10 + [SILENCIO] * 11)  # agora sim, o senhor
+    assert eventos[-1] == ("pergunta", "Que horas são?")
+
+
+def test_sem_pergunta_desiste_depois_da_espera(dados_tmp, monkeypatch):
+    o, eventos = _modo_pergunta(["Jarvis."])
+    _rodar_conferencias(o, monkeypatch)
+    r, relogio = Recortador(), Relogio()
+    relogio.blocos(o, r, [SILENCIO] * 20 + [FALA] * 5 + [SILENCIO] * 8)
+    relogio.t = time_real = __import__("time").time() + ouvido_mod.ESPERA_PERGUNTA_S + 1
+    relogio.blocos(o, r, [SILENCIO] * 2)
+    assert eventos[-1] == ("pergunta", None) and not o.esperando_pergunta
+
+
 def _ouvido(respostas, ouvidas):
     chamadas = []
 
     def chamar(rota, corpo=None, timeout=3.0):
         chamadas.append(corpo)
         return {"texto": respostas[len(chamadas) - 1]}
-    return ouvido_mod.Ouvido(ouvidas.append, chamar=chamar), chamadas
+    return ouvido_mod.Ouvido(lambda resto: ouvidas.append(resto), chamar=chamar), chamadas
 
 
 def test_so_jarvis_curto_nao_transcreve_de_novo(dados_tmp):
@@ -155,26 +229,35 @@ def test_jarvis_com_pergunta_vai_direto_e_abre_a_janela(dados_tmp):
     assert janelas == [1] and c.janela_aberta and tocadas == [] and iniciadas == []
 
 
-def test_jarvis_cala_cumprimenta_e_abre_ouvindo(dados_tmp):
+def test_jarvis_abre_a_janela_antes_de_cumprimentar_e_deixa_o_ouvido_pegar_a_pergunta(dados_tmp):
     saudacao = frase_pronta("saudacao")
     saudacao.parent.mkdir(parents=True, exist_ok=True)
     saudacao.write_bytes(b"RIFF")
     c, chamadas, tocadas, janelas, iniciadas = _cerebro(dados_tmp, saude={"mudo": False})
-    c.palavra_jarvis()
-    assert chamadas[0] == "/parar"
-    assert tocadas == [saudacao] and janelas == [1] and iniciadas == [1]
-    assert c._estado == "ouvindo"
-    c.palavra_jarvis()  # eco/repetição logo em seguida: ignora
-    assert tocadas == [saudacao]
+    ordem = []
+    c.mostrar_janela = lambda: ordem.append("janela")
+    c.tocar = lambda arquivo: ordem.append("saudacao")
+    publicados = []
+    c.publicar = publicados.append
+    desde = c.palavra_jarvis()
+    assert ordem == ["janela", "saudacao"]  # a janela aparece na hora; a voz vem depois
+    assert chamadas[0] == "/parar" and desde > 0
+    assert {"tipo": "chamado"} in publicados and c._estado == "ouvindo"
+    assert iniciadas == []  # quem pega a pergunta é o próprio ouvido (não perde o começo)
+    assert c.palavra_jarvis() is None  # eco/repetição logo em seguida: ignora
+    enviadas = []
+    c.mensagem_usuario = lambda texto, falada: enviadas.append(texto)
+    c.pergunta_ouvida("como está o app de saúde?")
+    assert enviadas == ["como está o app de saúde?"]
 
 
-def test_jarvis_mudo_ou_sem_frase_pronta_so_abre(dados_tmp):
-    c, _, tocadas, janelas, iniciadas = _cerebro(dados_tmp, saude={"mudo": True})
+def test_jarvis_mudo_ou_sem_frase_pronta_nao_cumprimenta(dados_tmp):
+    c, _, tocadas, janelas, _ = _cerebro(dados_tmp, saude={"mudo": True})
     frase = frase_pronta("saudacao")
     frase.parent.mkdir(parents=True, exist_ok=True)
     frase.write_bytes(b"RIFF")
-    c.palavra_jarvis()
-    assert tocadas == [] and janelas == [1] and iniciadas == [1]
+    assert c.palavra_jarvis() > 0
+    assert tocadas == [] and janelas == [1]
     frase.unlink()
     c2, _, tocadas2, _, _ = _cerebro(dados_tmp, saude={})
     c2.palavra_jarvis()
@@ -184,24 +267,33 @@ def test_jarvis_mudo_ou_sem_frase_pronta_so_abre(dados_tmp):
 def test_jarvis_ignorado_quando_ja_ouve_ou_quando_a_propria_fala_disse_jarvis(dados_tmp):
     c, _, tocadas, janelas, iniciadas = _cerebro(dados_tmp, saude={})
     c.escuta.ativa = True
-    c.palavra_jarvis()
+    assert c.palavra_jarvis() is None
     c.escuta.ativa = False
     c._estado, c._fala_atual = "falando", "Sou o Jarvis, senhor."
-    c.palavra_jarvis()
+    assert c.palavra_jarvis() is None
     assert janelas == [] and iniciadas == []
 
 
-def test_com_a_janela_aberta_jarvis_vale_como_super_j(dados_tmp):
+def test_com_a_janela_aberta_jarvis_cala_e_ouve_sem_saudacao(dados_tmp):
     saudacao = frase_pronta("saudacao")
     saudacao.parent.mkdir(parents=True, exist_ok=True)
     saudacao.write_bytes(b"RIFF")
     c, chamadas, tocadas, janelas, iniciadas = _cerebro(dados_tmp, saude={"mudo": False})
     c.janela_aberta = True
     c._estado, c._fala_atual = "falando", "Os testes passaram, senhor."
-    c.palavra_jarvis()  # interrompe a fala e já ouve, sem saudação
-    assert chamadas[0] == "/parar"
-    assert tocadas == [] and janelas == [] and iniciadas == [1]
-    assert c._estado == "ouvindo"
+    publicados = []
+    c.publicar = publicados.append
+    assert c.palavra_jarvis() == 0.0  # a pergunta vale logo depois do "Jarvis"
+    assert chamadas[0] == "/parar" and tocadas == [] and janelas == []
+    assert c._estado == "ouvindo" and {"tipo": "chamado"} in publicados
+
+
+def test_sem_pergunta_volta_ao_ocioso(dados_tmp):
+    c, *_ = _cerebro(dados_tmp, saude={})
+    c.janela_aberta = True
+    c.palavra_jarvis()
+    c.pergunta_ouvida(None)
+    assert c._estado == "ocioso"
 
 
 def test_ferramentas_viram_progresso_em_texto(dados_tmp):
