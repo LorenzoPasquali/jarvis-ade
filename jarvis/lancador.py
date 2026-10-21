@@ -1,12 +1,14 @@
 """Abre a sessão do Jarvis num terminal do Orca e instala serviços, comando e atalhos."""
 
 import ast
+import json
 import os
+import signal
 import shutil
 import subprocess
 from pathlib import Path
 
-from jarvis.config import RAIZ
+from jarvis.config import RAIZ, dados
 
 SERVICOS = ("jarvis-voz", "jarvis-vigia", "jarvis-cerebro")
 _CHAVE_ATALHOS = "org.gnome.settings-daemon.plugins.media-keys"
@@ -43,7 +45,28 @@ def _instalar_atalhos() -> None:
     subprocess.run(["gsettings", "set", _CHAVE_ATALHOS, "custom-keybindings", str(lista)], check=True)
 
 
+def _e_gravador(pid: int) -> bool:
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            return b"pw-record" in f.read()
+    except OSError:
+        return False
+
+
+def parar_gravador_antigo() -> None:
+    """O aperta-e-fala antigo (`jarvis ouvir`) podia deixar um pw-record gravando sem fim."""
+    arquivo = dados() / "ptt.json"
+    try:
+        pid = int(json.loads(arquivo.read_text())["pid"])
+    except (FileNotFoundError, ValueError, KeyError, TypeError):
+        return
+    if _e_gravador(pid):
+        os.kill(pid, signal.SIGINT)
+    arquivo.unlink(missing_ok=True)
+
+
 def instalar() -> int:
+    parar_gravador_antigo()
     destino = Path.home() / ".config/systemd/user"
     destino.mkdir(parents=True, exist_ok=True)
     for servico in SERVICOS:

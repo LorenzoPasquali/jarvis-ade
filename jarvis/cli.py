@@ -14,8 +14,14 @@ def _eventos(args: argparse.Namespace) -> int:
     from jarvis import eventos
 
     if args.seguir:
-        for linha in eventos.seguir():
-            print(linha, flush=True)
+        # A aba Jarvis do Orca (que usava isto no Monitor) foi aposentada: avisa uma vez e fica quieto,
+        # para a aba antiga não falar em dobro com o app nem ficar rearmando o monitor.
+        import time
+
+        print("[aviso] A aba Jarvis do Orca foi aposentada: o Jarvis agora é um app (Super+J). "
+              "Avise o senhor uma vez e peça para fechar esta aba.", flush=True)
+        while True:
+            time.sleep(3600)
     print(eventos.pendentes())
     return 0
 
@@ -121,9 +127,7 @@ def _enviar(args: argparse.Namespace) -> int:
 
 
 def _hook_fala(_: argparse.Namespace) -> int:
-    from jarvis import voz_cliente
-
-    voz_cliente.hook_fala(sys.stdin.read())
+    # Aposentado junto com a aba do Orca: quem fala agora é o cérebro. Fica mudo para não falar em dobro.
     return 0
 
 
