@@ -104,14 +104,27 @@ def test_jarvis_mudo_ou_sem_frase_pronta_so_abre(dados_tmp):
     assert tocadas2 == []
 
 
-def test_jarvis_ignorado_enquanto_fala_ou_ja_ouve(dados_tmp):
-    c, _, tocadas, janelas, _ = _cerebro(dados_tmp, saude={})
-    c._estado = "falando"
-    c.palavra_jarvis()
-    c._estado = "ocioso"
+def test_jarvis_ignorado_quando_ja_ouve_ou_quando_a_propria_fala_disse_jarvis(dados_tmp):
+    c, _, tocadas, janelas, iniciadas = _cerebro(dados_tmp, saude={})
     c.escuta.ativa = True
     c.palavra_jarvis()
-    assert janelas == []
+    c.escuta.ativa = False
+    c._estado, c._fala_atual = "falando", "Sou o Jarvis, senhor."
+    c.palavra_jarvis()
+    assert janelas == [] and iniciadas == []
+
+
+def test_com_a_janela_aberta_jarvis_vale_como_super_j(dados_tmp):
+    saudacao = frase_pronta("saudacao")
+    saudacao.parent.mkdir(parents=True, exist_ok=True)
+    saudacao.write_bytes(b"RIFF")
+    c, chamadas, tocadas, janelas, iniciadas = _cerebro(dados_tmp, saude={"mudo": False})
+    c.janela_aberta = True
+    c._estado, c._fala_atual = "falando", "Os testes passaram, senhor."
+    c.palavra_jarvis()  # interrompe a fala e já ouve, sem saudação
+    assert chamadas[0] == "/parar"
+    assert tocadas == [] and janelas == [] and iniciadas == [1]
+    assert c._estado == "ouvindo"
 
 
 def test_ferramentas_viram_progresso_em_texto(dados_tmp):

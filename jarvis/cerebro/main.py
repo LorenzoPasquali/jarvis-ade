@@ -137,6 +137,7 @@ class Cerebro:
         self._claude_volta_em = 0.0  # limite de uso: até lá os turnos vão direto ao modo reserva
         self._atendido_na_reserva: list[dict] = []  # o que o Claude ainda não sabe que foi conversado
         self._ultima_palavra = 0.0
+        self._fala_atual = ""
         self.mostrar_janela: Callable[[], None] = _mostrar_janela
         self.tocar: Callable[[Path], None] = _tocar
         self.janela_aberta = False
@@ -165,8 +166,7 @@ class Cerebro:
 
     def estado_inicial(self) -> list[dict]:
         iniciais = [{"tipo": "historico", "mensagens": self._historico()},
-                    {"tipo": "sessoes", "itens": self._sessoes or []},
-                    {"tipo": "projetos", "itens": projetos.para_painel(self._projetos)}, self._sistema,
+                    {"tipo": "sessoes", "itens": self._sessoes or []}, self._sistema,
                     {"tipo": "estado", "valor": self._estado}]
         iniciais += [self._cartao_de(p) for p in pendencias.listar()]
         return iniciais
@@ -242,18 +242,24 @@ class Cerebro:
             self.publicar(self._sistema)
 
     def palavra_jarvis(self) -> None:
-        """O senhor disse "Jarvis": responde na hora com a frase já gerada e abre a janela ouvindo a pergunta."""
+        """O senhor disse "Jarvis".
+
+        Com a janela fechada: responde na hora com a frase já gerada e abre a janela ouvindo a pergunta.
+        Com a janela aberta: vale como o Super+J — cala a fala e já ouve, sem saudação, para o senhor emendar a frase.
+        """
         agora = time.time()
-        if (self.escuta.ativa or self._estado == "falando" or self.bloqueada()
-                or agora - self._ultima_palavra < INTERVALO_PALAVRA_S):
-            return  # falando, o próprio "Jarvis" da resposta dispararia o ouvido
+        if self.escuta.ativa or self.bloqueada() or agora - self._ultima_palavra < INTERVALO_PALAVRA_S:
+            return
+        if self._estado == "falando" and "jarvis" in self._fala_atual.casefold():
+            return  # quem disse "Jarvis" foi a própria fala dele, não o senhor
         self._ultima_palavra = agora
         self._chamar_voz("/parar")
-        saudacao = frase_pronta("saudacao")
-        saude = self._chamar_voz("/saude") or {}
-        if saudacao.exists() and not saude.get("mudo"):
-            self.tocar(saudacao)  # termina antes de gravar: a saudação não entra na transcrição
-        self.mostrar_janela()
+        if not self.janela_aberta:
+            saudacao = frase_pronta("saudacao")
+            saude = self._chamar_voz("/saude") or {}
+            if saudacao.exists() and not saude.get("mudo"):
+                self.tocar(saudacao)  # termina antes de gravar: a saudação não entra na transcrição
+            self.mostrar_janela()
         self.super_j()
 
     def super_j(self) -> None:
@@ -279,6 +285,7 @@ class Cerebro:
     def _falar(self, texto: str) -> None:
         if self._calar_turno:
             return
+        self._fala_atual = texto
         if not self.janela_aberta:
             self.publicar({"tipo": "aviso", "texto": texto})
         self._definir_estado("falando")
@@ -536,16 +543,11 @@ class Cerebro:
         self._atualizar_projetos()
 
     def _atualizar_projetos(self) -> None:
+        """Lista guardada para o modo reserva (o Claude usa `jarvis projetos` quando precisa)."""
         try:
-            lista = projetos.listar()
+            self._projetos = projetos.listar()
         except Exception as erro:  # Orca fechado ou histórico ilegível: fica a última lista boa
             print(f"cérebro: não consegui listar os projetos: {erro!r}", flush=True)
-            return
-        antes = projetos.para_painel(self._projetos)
-        self._projetos = lista
-        itens = projetos.para_painel(lista)
-        if itens != antes:
-            self.publicar({"tipo": "projetos", "itens": itens})
 
     # ---------- laço ----------
 

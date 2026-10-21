@@ -18,7 +18,7 @@ Liga três serviços do systemd do usuário, a janela no login, o comando `jarvi
 - A janela (`hud/janela.py`) sobe escondida no login, pelo `~/.config/autostart/jarvis-hud.desktop`.
 - **Super+J** abre a janela já ouvindo. Quando você para de falar, ele envia; Super+J de novo encerra na hora. Esc fecha.
 - **Super+Shift+J** interrompe a fala.
-- **"Jarvis" em voz alta** (como uma Alexa): ele responde na hora "Como posso ajudar, senhor?" (frase gerada uma vez pelo servidor de voz em `dados/voz/frases/saudacao.wav`) e abre a janela ouvindo a pergunta. Enquanto pesquisa, a janela mostra em texto o que está fazendo; a voz vem com a resposta. A detecção é local, com o Porcupine (`pip install --user --break-system-packages pvporcupine`), e precisa da AccessKey gratuita do Picovoice (console.picovoice.ai) em `~/.config/jarvis/picovoice.key` (fora do repositório, `chmod 600`). Sem a chave, só o Super+J funciona. O microfone fica aberto o tempo todo para isso.
+- **"Jarvis" em voz alta** (como uma Alexa): ele responde na hora "Como posso ajudar, senhor?" (frase gerada uma vez pelo servidor de voz em `dados/voz/frases/saudacao.wav`) e abre a janela ouvindo a pergunta. Com a janela já aberta, "Jarvis" vale como o Super+J: cala a fala (se houver) e já ouve, sem saudação — é só emendar a frase. Enquanto pesquisa, a janela mostra em texto o que está fazendo; a voz vem com a resposta. A detecção é local, com o Porcupine (`pip install --user --break-system-packages pvporcupine`), e precisa da AccessKey gratuita do Picovoice (console.picovoice.ai) em `~/.config/jarvis/picovoice.key` (fora do repositório, `chmod 600`). Sem a chave, só o Super+J funciona. O microfone fica aberto o tempo todo para isso.
 
 ## Usar
 

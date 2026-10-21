@@ -228,62 +228,6 @@ body[data-estado="desconectado"] .estado { color: var(--nevoa); }
 @keyframes girar { to { transform: rotate(360deg); } }
 @keyframes onda { from { opacity: 0.7; transform: scale(1); } to { opacity: 0; transform: scale(2.05); } }
 
-/* ---------- projetos (coluna da esquerda) ---------- */
-
-#projetos {
-  position: fixed;
-  top: 92px;
-  left: 36px;
-  bottom: 190px;
-  width: 300px;
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(to bottom, #000 78%, transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 78%, transparent 100%);
-}
-
-#projetos h2 {
-  margin: 0 0 14px;
-  font-family: "Michroma", sans-serif;
-  font-size: 12px;
-  font-weight: 400;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--nevoa);
-}
-
-#lista-projetos {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-#lista-projetos li {
-  padding-left: 14px;
-  border-left: 1.5px solid var(--linha);
-}
-
-#lista-projetos li[data-sessao]:not([data-sessao=""]) { border-left-color: var(--holo); }
-#lista-projetos li[data-atencao="true"] { border-left-color: var(--ambar); }
-
-#lista-projetos .nome { display: block; font-weight: 600; font-size: 15px; }
-#lista-projetos .situacao { display: block; font-size: 12px; color: var(--nevoa); }
-#lista-projetos .ultima {
-  display: -webkit-box;
-  margin-top: 3px;
-  overflow: hidden;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  font-size: 13px;
-  color: var(--gelo);
-  opacity: 0.78;
-}
-
-/* Em telas estreitas (monitor em pé) a coluna cobriria a órbita: o Jarvis continua respondendo por voz e texto. */
-@media (max-width: 1500px) { #projetos { display: none; } }
-
 /* ---------- agentes em órbita ---------- */
 
 #sessoes {
@@ -408,6 +352,23 @@ body.leitura #sessoes,
 body.leitura #ligacoes { opacity: 0; visibility: hidden; }
 body.leitura .estado { scale: 2.4; transform-origin: 50% 0; }
 body.leitura #conversa { top: 150px; }
+
+#recolher {
+  position: absolute;
+  top: 106px;
+  left: calc(50% + min(380px, 44vw));
+  translate: -100% 0;
+  padding: 6px 16px;
+  border: 1px solid var(--linha-forte);
+  border-radius: 999px;
+  background: rgba(2, 9, 14, 0.85);
+  color: var(--holo);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+#recolher:hover, #ir-ao-fim:hover { border-color: var(--holo); }
 
 #voltar-orbita {
   position: absolute;

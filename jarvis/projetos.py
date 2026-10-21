@@ -307,10 +307,5 @@ def commits_recentes(caminho: str, n: int = 5, runner=subprocess.run) -> list[st
     return r.stdout.splitlines() if r.returncode == 0 else []
 
 
-def para_painel(projetos: list[Projeto], limite: int = 12) -> list[dict]:
-    return [{"nome": p.nome, "ts_ms": int(p.ts * 1000), "agente": p.agente, "sessao": p.sessao,
-             "resposta": _linha(p.resposta, 160), "commit": _linha(p.commit, 80)} for p in projetos[:limite]]
-
-
 def como_dict(p: Projeto) -> dict:
     return asdict(p)

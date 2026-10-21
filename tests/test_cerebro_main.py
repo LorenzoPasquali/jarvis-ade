@@ -407,7 +407,7 @@ def test_permissao_gigante_e_negada_sem_cartao(cerebro_falso):
     assert not [p for p in publicados if p["tipo"] == "cartao"]
 
 
-def test_projetos_vao_para_o_painel_e_para_o_modo_reserva(dados_tmp, monkeypatch):
+def test_projetos_vao_para_o_modo_reserva(dados_tmp, monkeypatch):
     from jarvis import projetos
 
     lista = [projetos.Projeto(nome="app-analise-saude", caminho="/git/app-analise-saude", ts=time.time() - 60,
@@ -417,15 +417,8 @@ def test_projetos_vao_para_o_painel_e_para_o_modo_reserva(dados_tmp, monkeypatch
     claude, codex = ClaudeFalso(), CodexFalso()
     c = Cerebro(claude=claude, codex=codex, falar=lambda t: True, bloqueada=lambda: False,
                 chamar_voz=lambda *a, **k: {})
-    publicados = []
-    c.publicar = publicados.append
     c._atualizar_projetos()
-    [evento] = [p for p in publicados if p["tipo"] == "projetos"]
-    assert evento["itens"][0]["nome"] == "app-analise-saude"
-    assert evento["itens"][0]["resposta"] == "Plano 4 mesclado."
-    assert {"tipo": "projetos", "itens": evento["itens"]} in c.estado_inicial()
-    c._atualizar_projetos()  # nada mudou: não publica de novo
-    assert sum(p["tipo"] == "projetos" for p in publicados) == 1
+    assert not any(e["tipo"] == "projetos" for e in c.estado_inicial())  # a janela não tem mais a coluna
 
     c.mensagem_usuario("e o app de saúde?", falada=False)
     c.ao_evento_claude({"type": "result", "is_error": True, "result": "usage limit"})

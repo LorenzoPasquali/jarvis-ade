@@ -169,25 +169,6 @@
     $("ligacoes").innerHTML = linhas.join("");
   }
 
-  // ---------- projetos (todos do Orca, mesmo sem aba aberta) ----------
-
-  function desenharProjetos(itens) {
-    const lista = $("lista-projetos");
-    lista.replaceChildren();
-    itens.forEach((p) => {
-      const item = document.createElement("li");
-      item.dataset.sessao = p.sessao || "";
-      item.dataset.atencao = String(PRECISA_DO_SENHOR.has(p.sessao));
-      const situacao = [tempoDesde(p.ts_ms) || "sem atividade",
-        p.sessao ? `aba ${ROTULO_SESSAO[p.sessao] || p.sessao}` : p.agente].filter(Boolean).join(" · ");
-      item.innerHTML = `<span class="nome">${escapar(p.nome)}</span>` +
-        `<span class="situacao">${escapar(situacao)}</span>` +
-        ((p.resposta || p.commit) ? `<span class="ultima">${escapar(p.resposta || p.commit)}</span>` : "");
-      lista.append(item);
-    });
-    $("projetos").hidden = itens.length === 0;
-  }
-
   // ---------- confirmações ----------
 
   function adicionarCartao(evento) {
@@ -285,11 +266,13 @@
     if (document.body.classList.contains("leitura")) return;
     document.body.classList.add("leitura");
     $("voltar-orbita").hidden = false;
+    $("recolher").hidden = false;
   }
 
   function sairLeitura() {
     document.body.classList.remove("leitura");
     $("voltar-orbita").hidden = true;
+    $("recolher").hidden = true;
     irAoFim();
   }
 
@@ -307,6 +290,7 @@
   $("conversa").addEventListener("transitionend", () => { if (seguirFim) irAoFim(); });
   $("ir-ao-fim").addEventListener("click", irAoFim);
   $("voltar-orbita").addEventListener("click", sairLeitura);
+  $("recolher").addEventListener("click", () => { sairLeitura(); $("texto").focus(); });
 
   // ---------- API pública ----------
 
@@ -324,7 +308,6 @@
       case "progresso": progresso(evento.texto); break;
       case "resposta_fim": respostaFim(evento.texto); break;
       case "sessoes": desenharSessoes(evento.itens); break;
-      case "projetos": desenharProjetos(evento.itens); break;
       case "cartao": adicionarCartao(evento); break;
       case "cartao_fim": fimCartao(evento); break;
       case "sistema": sistema(evento); break;
@@ -365,7 +348,9 @@
   // ---------- interação ----------
 
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") fechar();
+    if (e.key === "Escape") {
+      if (document.body.classList.contains("leitura")) sairLeitura(); else fechar();
+    }
     if (e.key === "PageUp" || e.key === "PageDown") {
       e.preventDefault();
       if (e.key === "PageUp") entrarLeitura();
@@ -412,13 +397,6 @@
   // ---------- demonstração ----------
 
   const agora = Date.now();
-  const PROJETOS_DEMO = [
-    { nome: "jarvis", ts_ms: Date.now() - 2 * 60000, agente: "claude", sessao: "working", resposta: "Montando o painel de projetos" },
-    { nome: "app-analise-saude", ts_ms: Date.now() - 32 * 3600000, agente: "claude", sessao: "", resposta: "Mesclei o Plano 4 (memória) na master e enviei ao GitHub." },
-    { nome: "lorenzo-portfolio", ts_ms: Date.now() - 4 * 86400000, agente: "claude", sessao: "", resposta: "Cadeia de 4 portões, do commit ao ar." },
-    { nome: "gestao-postos", ts_ms: Date.now() - 13 * 86400000, agente: "codex", sessao: "", resposta: "A Fase 3 é o portal do candidato." },
-    { nome: "hostinger-sv", ts_ms: Date.now() - 6 * 86400000, agente: "claude", sessao: "done", resposta: "Escalabilidade: mesmo desenho do Swarm." },
-  ];
   const SESSOES_DEMO = [
     { projeto: "app-analise-saude", estado: "waiting", desde_ms: agora - 3 * 60000, mensagem: "Posso seguir com o Plano 5 (notificações)?" },
     { projeto: "dailytracker-app", estado: "working", desde_ms: agora - 7 * 60000, mensagem: "Rodando a suíte de testes do módulo de metas" },
@@ -435,7 +413,6 @@
   function demoQuadroFinal() {
     aplicar({ tipo: "sistema", voz: true, orca: true, clima: "16 °C, nublado em Caxias do Sul" });
     aplicar({ tipo: "sessoes", itens: SESSOES_DEMO });
-    aplicar({ tipo: "projetos", itens: PROJETOS_DEMO });
     aplicar({ tipo: "historico", mensagens: [
       { papel: "usuario", texto: "Bom dia, Jarvis." },
       { papel: "jarvis", texto: "Bom dia, senhor. Estão fazendo 16 graus e o céu está nublado." },
@@ -461,7 +438,6 @@
   function demoAoVivo() {
     aplicar({ tipo: "sistema", voz: true, orca: true, clima: "16 °C, nublado em Caxias do Sul" });
     aplicar({ tipo: "sessoes", itens: SESSOES_DEMO });
-    aplicar({ tipo: "projetos", itens: PROJETOS_DEMO });
     aplicar({ tipo: "historico", mensagens: [
       { papel: "usuario", texto: "Bom dia, Jarvis." },
       { papel: "jarvis", texto: "Bom dia, senhor. Estão fazendo 16 graus e o céu está nublado." },
