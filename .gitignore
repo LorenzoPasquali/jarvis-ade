@@ -3,13 +3,6 @@
 /jarvis-local/
 /JarvisExample.mp3
 
-# Frontend, Rust, and Tauri build output
-/node_modules/
-/dist/
-/target/
-/src-tauri/target/
-/src-tauri/gen/
-
 # Python environments and generated files
 /.venv/
 /venv/
