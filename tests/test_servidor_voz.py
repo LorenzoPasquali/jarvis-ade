@@ -132,3 +132,27 @@ def test_pausa_de_escuta_tem_limite_curto():
     antes = time.time()
     loc.ouvindo(True)
     assert loc._ouvindo_ate - antes <= 36
+
+
+def test_frases_prontas_geradas_uma_vez(dados_tmp, monkeypatch):
+    from voz import servidor
+    from jarvis.config import frase_pronta
+
+    class Motor:
+        def __init__(self):
+            self.frases = []
+
+        def sintetizar(self, frase):
+            self.frases.append(frase)
+            return b"RIFF-bruto"
+
+    def acelerar(origem, destino):
+        destino.write_bytes(origem.read_bytes() + b"-1.2x")
+        return True
+    monkeypatch.setattr(servidor, "acelerar", acelerar)
+    motor = Motor()
+    servidor.preparar_frases(motor, {"saudacao": "Como posso ajudar, senhor?"})
+    servidor.preparar_frases(motor, {"saudacao": "Como posso ajudar, senhor?"})
+    assert motor.frases == ["Como posso ajudar, senhor?"]
+    assert frase_pronta("saudacao").read_bytes() == b"RIFF-bruto-1.2x"
+    assert not frase_pronta("saudacao").with_suffix(".bruto.wav").exists()

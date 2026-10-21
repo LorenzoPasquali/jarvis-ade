@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from jarvis.config import MP3_REFERENCIA, TEXTO_REFERENCIA, VOZ_PORTA, dados  # noqa: E402
+from jarvis.config import MP3_REFERENCIA, SAUDACAO, TEXTO_REFERENCIA, VOZ_PORTA, dados, frase_pronta  # noqa: E402
 from jarvis.texto_fala import dividir_frases  # noqa: E402
 
 VELOCIDADE_FALA = 1.2
@@ -96,6 +96,36 @@ class Locutor:
                 self._falando = not self._audios.empty()
 
 
+def acelerar(origem: Path, destino: Path) -> bool:
+    try:
+        subprocess.run(["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i",
+                        str(origem), "-filter:a", f"atempo={VELOCIDADE_FALA}", str(destino)],
+                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        return True
+    except (OSError, subprocess.CalledProcessError) as erro:
+        _log(f"falha ao acelerar a voz; usando velocidade normal: {erro}")
+        return False
+
+
+def preparar_frases(motor, frases: dict[str, str]) -> None:
+    """Gera uma vez as frases que precisam tocar na hora (ex.: a saudação do "Jarvis"). Apague o arquivo para refazer."""
+    for nome, texto in frases.items():
+        destino = frase_pronta(nome)
+        if destino.exists():
+            continue
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        bruto = destino.with_suffix(".bruto.wav")
+        try:
+            bruto.write_bytes(motor.sintetizar(texto))
+        except Exception as erro:
+            _log(f"falha ao gerar a frase {nome!r}: {erro!r}")
+            continue
+        if not acelerar(bruto, destino):
+            bruto.replace(destino)
+        bruto.unlink(missing_ok=True)
+        _log(f"frase pronta: {destino}")
+
+
 class TocadorPw:
     def __init__(self):
         self._processo: subprocess.Popen | None = None
@@ -106,14 +136,7 @@ class TocadorPw:
         arquivo.parent.mkdir(parents=True, exist_ok=True)
         arquivo.write_bytes(wav)
         arquivo_rapido = arquivo.with_name("fala-1-2x.wav")
-        arquivo_tocar = arquivo_rapido
-        try:
-            subprocess.run(["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i",
-                            str(arquivo), "-filter:a", f"atempo={VELOCIDADE_FALA}", str(arquivo_rapido)],
-                           check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-        except (OSError, subprocess.CalledProcessError) as erro:
-            _log(f"falha ao acelerar a voz; usando velocidade normal: {erro}")
-            arquivo_tocar = arquivo
+        arquivo_tocar = arquivo_rapido if acelerar(arquivo, arquivo_rapido) else arquivo
         with self._trava:
             self._processo = subprocess.Popen(["pw-play", str(arquivo_tocar)])
         self._processo.wait()
@@ -230,7 +253,9 @@ def main() -> None:
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
     _log("carregando OmniVoice e Whisper na GPU")
-    locutor = Locutor(MotorOmniVoice(), TocadorPw())
+    motor = MotorOmniVoice()
+    preparar_frases(motor, {"saudacao": SAUDACAO})
+    locutor = Locutor(motor, TocadorPw())
     servidor = criar_servidor(locutor, TranscritorWhisper(), VOZ_PORTA)
     _log(f"pronto em 127.0.0.1:{VOZ_PORTA}")
     servidor.serve_forever()

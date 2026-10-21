@@ -80,16 +80,35 @@
     return artigo;
   }
 
+  // Enquanto o modelo usa ferramentas: uma linha de texto ("Consultando os projetos…"), sem voz.
+  function progresso(texto) {
+    let linha = document.querySelector("#conversa .progresso");
+    if (!linha) {
+      linha = document.createElement("p");
+      linha.className = "progresso";
+    }
+    linha.textContent = texto;
+    $("conversa").append(linha);
+  }
+
+  function limparProgresso() {
+    const linha = document.querySelector("#conversa .progresso");
+    if (linha) linha.remove();
+  }
+
   function delta(texto) {
     if (!respostaAtual) {
       respostaAtual = adicionarMensagem("jarvis", "");
       respostaAtual.classList.add("escrevendo");
+      const linha = document.querySelector("#conversa .progresso");
+      if (linha) $("conversa").append(linha);
     }
     respostaAtual.dataset.texto += texto;
     respostaAtual.innerHTML = markdownSimples(respostaAtual.dataset.texto);
   }
 
   function respostaFim(texto) {
+    limparProgresso();
     if (!respostaAtual) respostaAtual = adicionarMensagem("jarvis", "");
     respostaAtual.dataset.texto = texto ?? respostaAtual.dataset.texto;
     respostaAtual.innerHTML = markdownSimples(respostaAtual.dataset.texto);
@@ -242,6 +261,7 @@
         adicionarMensagem("usuario", evento.texto);
         break;
       case "delta": delta(evento.texto); break;
+      case "progresso": progresso(evento.texto); break;
       case "resposta_fim": respostaFim(evento.texto); break;
       case "sessoes": desenharSessoes(evento.itens); break;
       case "projetos": desenharProjetos(evento.itens); break;

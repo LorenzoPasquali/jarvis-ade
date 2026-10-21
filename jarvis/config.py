@@ -17,3 +17,10 @@ def dados() -> Path:
     caminho = Path(os.environ.get("JARVIS_DADOS", RAIZ / "dados"))
     caminho.mkdir(parents=True, exist_ok=True)
     return caminho
+
+# Frases que o servidor de voz deixa geradas de antemão, para tocar sem esperar a síntese.
+SAUDACAO = "Como posso ajudar, senhor?"
+
+
+def frase_pronta(nome: str) -> Path:
+    return dados() / "voz" / "frases" / f"{nome}.wav"

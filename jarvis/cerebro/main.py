@@ -5,19 +5,21 @@ import json
 import os
 import queue
 import re
+import signal
 import subprocess
 import threading
 import time
 from collections import deque
 from collections.abc import Callable
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from jarvis import consultas, orca, pendencias, projetos, turno, voz_cliente
 from jarvis.cerebro import escuta as escuta_mod
 from jarvis.cerebro import reserva
 from jarvis.cerebro.eventos import FilaEventos
 from jarvis.cerebro.fala import SeparadorFala
-from jarvis.config import RAIZ, dados
+from jarvis.config import RAIZ, dados, frase_pronta
 
 ESPERA_PERMISSAO_S = 120
 MAX_ENTRADA_PERMISSAO = 4000  # acima disso o cartão não daria para ler inteiro: nega
@@ -26,6 +28,7 @@ TRAVADO_RESERVA_S = 90  # Gemini/Codex mudos por tanto tempo: desiste deles (o C
 ESPERA_LIMITE_S = 1800  # limite do Claude sem horário de volta na mensagem: tenta de novo em 30 min
 MAX_ATENDIDO_NA_RESERVA = 12
 NOMES = {"claude": "Claude", "gemini": "Gemini", "codex": "Codex"}
+INTERVALO_PALAVRA_S = 3.0  # "Jarvis" repetido nesse intervalo conta uma vez só
 _ERROS_DE_REDE = ("eai_again", "enotfound", "econnrefused", "etimedout", "getaddrinfo", "can't reach",
                   "check your internet", "network error")
 _HORA = re.compile(r"(\d{1,2})(?::(\d{2}))?\s*([ap]m)", re.IGNORECASE)
@@ -56,6 +59,38 @@ def volta_do_limite(texto: str, agora: datetime) -> float:
     if alvo <= agora:
         alvo += timedelta(days=1)
     return alvo.timestamp() + 60
+
+
+_PROGRESSO_COMANDOS = (
+    ("jarvis projeto", "Consultando os projetos…"),
+    ("jarvis status", "Vendo as sessões abertas no Orca…"),
+    ("jarvis historico", "Levantando o histórico dos projetos…"),
+    ("jarvis clima", "Vendo o clima…"),
+    ("jarvis enviar", "Preparando o envio ao agente…"),
+    ("jarvis lancar", "Preparando a tarefa do agente…"),
+    ("jarvis pendencias", "Vendo as pendências…"),
+    ("orca terminal read", "Lendo o terminal do agente…"),
+    ("orca search", "Buscando nas conversas dos agentes…"),
+)
+
+
+def descrever_ferramenta(nome: str, entrada: dict) -> str:
+    """Uma linha para a janela enquanto o modelo trabalha (só texto: a voz fica para a resposta)."""
+    if nome == "Bash":
+        comando = " ".join(str(entrada.get("command") or "").split())
+        for prefixo, texto in _PROGRESSO_COMANDOS:
+            if comando.startswith(prefixo):
+                return texto
+        return f"Rodando: {comando[:70]}"
+    if nome == "WebSearch":
+        return f"Pesquisando na web: {str(entrada.get('query') or '')[:80]}"
+    if nome == "WebFetch":
+        return "Lendo uma página da web…"
+    if nome in ("Read", "Grep", "Glob"):
+        return "Lendo arquivos dos projetos…"
+    if nome in ("Task", "Agent"):
+        return "Delegando parte do trabalho…"
+    return f"Usando {nome}…"
 
 
 def _agora() -> str:
@@ -99,6 +134,9 @@ class Cerebro:
         self._fallback_ativo = False
         self._claude_volta_em = 0.0  # limite de uso: até lá os turnos vão direto ao modo reserva
         self._atendido_na_reserva: list[dict] = []  # o que o Claude ainda não sabe que foi conversado
+        self._ultima_palavra = 0.0
+        self.mostrar_janela: Callable[[], None] = _mostrar_janela
+        self.tocar: Callable[[Path], None] = _tocar
         self.janela_aberta = False
         self.escuta = escuta_mod.Escuta(ao_nivel=self._ao_nivel, ao_fim=self._ao_fim_escuta)
 
@@ -201,6 +239,21 @@ class Cerebro:
             self._sistema = {**self._sistema, "modelo": nome}
             self.publicar(self._sistema)
 
+    def palavra_jarvis(self) -> None:
+        """O senhor disse "Jarvis": responde na hora com a frase já gerada e abre a janela ouvindo a pergunta."""
+        agora = time.time()
+        if (self.escuta.ativa or self._estado == "falando" or self.bloqueada()
+                or agora - self._ultima_palavra < INTERVALO_PALAVRA_S):
+            return  # falando, o próprio "Jarvis" da resposta dispararia o ouvido
+        self._ultima_palavra = agora
+        self._chamar_voz("/parar")
+        saudacao = frase_pronta("saudacao")
+        saude = self._chamar_voz("/saude") or {}
+        if saudacao.exists() and not saude.get("mudo"):
+            self.tocar(saudacao)  # termina antes de gravar: a saudação não entra na transcrição
+        self.mostrar_janela()
+        self.super_j()
+
     def super_j(self) -> None:
         self.janela_aberta = True
         if not self.escuta.ativa:
@@ -295,6 +348,11 @@ class Cerebro:
             delta = interno.get("delta") or {}
             if interno.get("type") == "content_block_delta" and delta.get("type") == "text_delta":
                 self._acrescentar(delta.get("text", ""))
+        elif tipo == "assistant":
+            for bloco in (evento.get("message") or {}).get("content") or []:
+                if isinstance(bloco, dict) and bloco.get("type") == "tool_use":
+                    self.publicar({"tipo": "progresso",
+                                   "texto": descrever_ferramenta(bloco.get("name") or "", bloco.get("input") or {})})
         elif tipo == "result":
             with self._despacho:
                 if evento.get("is_error") and self._tentar_reserva(provedor, evento):
@@ -530,6 +588,21 @@ class Cerebro:
             time.sleep(1)
 
 
+def _tocar(arquivo: Path) -> None:
+    try:
+        subprocess.run(["pw-play", str(arquivo)], timeout=10, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
+def _mostrar_janela() -> None:
+    from jarvis import hud_cli
+
+    pid = hud_cli._pid()
+    if pid and hud_cli._janela_viva(pid):
+        os.kill(pid, signal.SIGUSR1)
+
+
 def garantir_orca() -> None:
     try:
         estado = orca.executar(["status"], timeout=10)
@@ -548,6 +621,7 @@ def main() -> int:
     from jarvis.cerebro.claude import ProcessoClaude, comando_claude
     from jarvis.cerebro.codex import ProcessoCodex, comando_codex
     from jarvis.cerebro.gemini import ProcessoGemini, comando_gemini
+    from jarvis.cerebro.ouvido import Ouvido
     from jarvis.cerebro.servidor import criar
 
     env = {**os.environ, "PATH": f"{RAIZ / 'bin'}{os.pathsep}{os.environ.get('PATH', '')}", "JARVIS_CEREBRO": "1"}
@@ -563,6 +637,8 @@ def main() -> int:
     threading.Thread(target=servidor.serve_forever, daemon=True).start()
     garantir_orca()
     cerebro.claude.iniciar()
+    cerebro.ouvido = Ouvido(cerebro.palavra_jarvis)
+    cerebro.ouvido.iniciar()
     print("cérebro pronto em 127.0.0.1:8766", flush=True)
     cerebro.laco()
     return 0

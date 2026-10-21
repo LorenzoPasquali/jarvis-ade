@@ -374,6 +374,16 @@ body[data-estado="desconectado"] .estado { color: var(--nevoa); }
 .msg ul { margin: 4px 0 8px; padding-left: 20px; }
 .msg code { font-family: "Saira", sans-serif; font-stretch: 75%; color: var(--holo); }
 
+.progresso {
+  margin: 0;
+  font-size: 15px;
+  font-style: italic;
+  color: var(--nevoa);
+  animation: pulsar-texto 1.6s ease-in-out infinite;
+}
+
+@keyframes pulsar-texto { 50% { opacity: 0.55; } }
+
 .msg.usuario {
   padding-left: 14px;
   border-left: 2px solid var(--linha-forte);
@@ -567,6 +577,6 @@ html.fundo-teste body::before {
   body.aberto .marcas, body.aberto .anel-fino, body.aberto .segmentos,
   body.aberto .arcos, body.aberto .no,
   body[data-estado] .arcos, body[data-estado] .segmentos, body[data-estado] .ondas circle,
-  .no::before, .msg.jarvis.escrevendo::after { animation: none !important; }
+  .no::before, .msg.jarvis.escrevendo::after, .progresso { animation: none !important; }
   body[data-estado="falando"] .ondas circle:first-child { opacity: 0.6; transform: scale(1.4); }
 }
