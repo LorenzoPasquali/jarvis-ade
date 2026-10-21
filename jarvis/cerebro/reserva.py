@@ -31,7 +31,7 @@ def estado_orca() -> str:
     return consultas.formatar_status(agentes, terminais, jarvis, int(time.time() * 1000))
 
 
-def _conversa(historico: list[dict]) -> str:
+def conversa(historico: list[dict]) -> str:
     linhas = []
     for m in historico[-MAX_CONVERSA:]:
         quem = "Senhor" if m.get("papel") == "usuario" else "Jarvis"
@@ -46,5 +46,5 @@ def mensagem(texto: str, historico: list[dict], estado: str | None = None, proje
     return (f"{INSTRUCOES}\n\n"
             f"## Sessões de agentes abertas no Orca\n{estado if estado is not None else estado_orca()}\n\n"
             f"{secao_projetos}"
-            f"## Conversa recente com o senhor\n{_conversa(historico)}\n\n"
+            f"## Conversa recente com o senhor\n{conversa(historico)}\n\n"
             f"## Mensagem atual\n{texto}")

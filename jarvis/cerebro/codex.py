@@ -76,7 +76,7 @@ class ProcessoCodex:
                             "delta": {"type": "text_delta", "text": texto}}})
 
     def _executar(self, texto: str) -> None:
-        concluido, falhou, resposta = False, "", ""
+        concluido, falhou, ultimo_erro, resposta, parcial = False, "", "", "", ""
         try:
             self._proc = subprocess.Popen(self.comando_atual(texto), cwd=self._cwd, env=self._env, text=True,
                                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=1)
@@ -85,26 +85,35 @@ class ProcessoCodex:
                     evento = json.loads(linha)
                 except ValueError:
                     continue
+                if not isinstance(evento, dict):
+                    continue
                 tipo = evento.get("type")
                 if tipo == "thread.started" and evento.get("thread_id"):
                     self._gravar_thread(evento["thread_id"])
                 elif tipo == "item.completed":
                     item = evento.get("item") or {}
                     if item.get("type") == "agent_message":
-                        trecho = item.get("text") or ""
-                        resposta += trecho
-                        self._delta(trecho)
+                        if not parcial:  # sem deltas antes: o texto chega inteiro aqui
+                            trecho = item.get("text") or ""
+                            resposta += trecho
+                            self._delta(trecho)
+                        parcial = ""
                 elif tipo == "item.agent_message.delta":
                     trecho = evento.get("delta") or ""
+                    parcial += trecho
                     resposta += trecho
                     self._delta(trecho)
                 elif tipo == "turn.completed":
                     concluido = True
-                elif tipo in ("turn.failed", "error"):
+                elif tipo == "turn.failed":
                     falhou = json.dumps(evento, ensure_ascii=False)
+                elif tipo == "error":  # ex.: "Reconnecting... 1/5": o Codex ainda tenta sozinho
+                    ultimo_erro = json.dumps(evento, ensure_ascii=False)
+                if tipo not in ("turn.failed", "error"):
+                    self._ao_evento({"type": "progress"})  # trabalhando: o cérebro não o dá por travado
             codigo = self._proc.wait()
             if not concluido and not falhou:
-                falhou = f"Codex terminou com código {codigo}."
+                falhou = ultimo_erro or f"Codex terminou com código {codigo}."
         except OSError as erro:
             falhou = str(erro)
         finally:

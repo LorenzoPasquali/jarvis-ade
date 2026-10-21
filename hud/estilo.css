@@ -116,6 +116,8 @@ body.aberto { opacity: 1; }
 }
 
 .servicos li[data-ok="false"] { color: var(--rubi); }
+.servicos li[data-reserva="true"] { color: var(--ambar); }
+.servicos li[data-reserva="true"]::before { background: var(--ambar); box-shadow: 0 0 8px var(--ambar); }
 .servicos li[data-ok="false"]::before { background: var(--rubi); box-shadow: 0 0 8px var(--rubi); }
 
 /* ---------- palco ---------- */

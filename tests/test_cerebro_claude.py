@@ -137,9 +137,21 @@ def test_codex_converte_resposta_jsonl_em_eventos_do_cerebro(tmp_path):
     deltas = "".join(e["event"]["delta"]["text"] for e in eventos if e["type"] == "stream_event")
     assert deltas == "Olá, senhor.\n🔊 Fallback pronto.\n"
     assert [e for e in eventos if e["type"] == "result"][-1]["result"] == deltas
+    assert {"type": "progress"} in eventos
 
 
 def test_codex_reutiliza_a_thread_no_proximo_fallback(tmp_path):
     (tmp_path / "codex-s.json").write_text('{"thread_id": "thread-anterior"}')
     p = ProcessoCodex(["codex", "exec"], tmp_path, os.environ.copy(), lambda e: None, tmp_path / "codex-s.json")
     assert p.comando_atual("oi")[:4] == ["codex", "exec", "resume", "thread-anterior"]
+
+
+def test_codex_que_reconecta_e_conclui_nao_conta_como_falha(tmp_path):
+    eventos = []
+    p = ProcessoCodex([sys.executable, FALSO.replace("claude_falso", "codex_falso")], tmp_path,
+                      os.environ.copy(), eventos.append, tmp_path / "codex-s.json")
+    p.enviar("reconecta")
+    esperar(lambda: any(e["type"] == "result" for e in eventos))
+    [resultado] = [e for e in eventos if e["type"] == "result"]
+    assert not resultado["is_error"]
+    assert resultado["result"] == "Olá, senhor.\n🔊 Fallback pronto.\n"

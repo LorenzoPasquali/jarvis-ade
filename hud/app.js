@@ -216,6 +216,12 @@
     if ("voz" in evento) $("servico-voz").dataset.ok = String(evento.voz);
     if ("orca" in evento) $("servico-orca").dataset.ok = String(evento.orca);
     if (evento.clima) $("clima").textContent = evento.clima;
+    if (evento.modelo) {
+      const modelo = $("servico-modelo");
+      const reserva = evento.modelo !== "Claude";
+      modelo.textContent = reserva ? `${evento.modelo} · reserva` : evento.modelo;
+      modelo.dataset.reserva = String(reserva);
+    }
   }
 
   function definirEstado(valor) {

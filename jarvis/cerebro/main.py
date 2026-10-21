@@ -4,12 +4,13 @@ import itertools
 import json
 import os
 import queue
+import re
 import subprocess
 import threading
 import time
 from collections import deque
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from jarvis import consultas, orca, pendencias, projetos, turno, voz_cliente
 from jarvis.cerebro import escuta as escuta_mod
@@ -21,9 +22,40 @@ from jarvis.config import RAIZ, dados
 ESPERA_PERMISSAO_S = 120
 MAX_ENTRADA_PERMISSAO = 4000  # acima disso o cartão não daria para ler inteiro: nega
 TRAVADO_S = 300  # turno sem saída de modelo por tanto tempo: considera travado e reinicia
+TRAVADO_RESERVA_S = 90  # Gemini/Codex mudos por tanto tempo: desiste deles (o Codex fica minutos reconectando)
+ESPERA_LIMITE_S = 1800  # limite do Claude sem horário de volta na mensagem: tenta de novo em 30 min
+MAX_ATENDIDO_NA_RESERVA = 12
+NOMES = {"claude": "Claude", "gemini": "Gemini", "codex": "Codex"}
+_ERROS_DE_REDE = ("eai_again", "enotfound", "econnrefused", "etimedout", "getaddrinfo", "can't reach",
+                  "check your internet", "network error")
+_HORA = re.compile(r"(\d{1,2})(?::(\d{2}))?\s*([ap]m)", re.IGNORECASE)
 PAUSA_APOS_ERRO_S = 600
 MAX_HISTORICO = 50
 INTERVALO_SISTEMA_S = 60
+
+
+def tipo_de_erro(texto: str) -> str:
+    t = texto.casefold()
+    if any(p in t for p in _ERROS_DE_REDE):
+        return "rede"
+    if "limit" in t or "quota" in t or "resets" in t:
+        return "limite"
+    return "outro"
+
+
+def volta_do_limite(texto: str, agora: datetime) -> float:
+    """"You've hit your session limit · resets 11:10pm (...)" -> quando tentar o Claude de novo."""
+    _, achou, resto = texto.partition("resets")
+    m = _HORA.search(resto) if achou else None
+    if not m:
+        return agora.timestamp() + ESPERA_LIMITE_S
+    hora, minuto = int(m[1]) % 12 + (12 if m[3].lower() == "pm" else 0), int(m[2] or 0)
+    if minuto > 59:
+        return agora.timestamp() + ESPERA_LIMITE_S
+    alvo = agora.replace(hour=hora, minute=minuto, second=0, microsecond=0)
+    if alvo <= agora:
+        alvo += timedelta(days=1)
+    return alvo.timestamp() + 60
 
 
 def _agora() -> str:
@@ -55,7 +87,7 @@ class Cerebro:
         self._cartoes: set[int] = set()
         self._sessoes: list[dict] | None = None
         self._projetos: list[projetos.Projeto] = []
-        self._sistema: dict = {"tipo": "sistema", "voz": True, "orca": True}
+        self._sistema: dict = {"tipo": "sistema", "voz": True, "orca": True, "modelo": "Claude"}
         self._ultimo_sistema = 0.0
         self._estado = "ocioso"
         self._pendencia_no_turno = False
@@ -65,6 +97,8 @@ class Cerebro:
         self._entrada_atual: tuple[str, str] | None = None
         self._provedor_ativo = "claude"
         self._fallback_ativo = False
+        self._claude_volta_em = 0.0  # limite de uso: até lá os turnos vão direto ao modo reserva
+        self._atendido_na_reserva: list[dict] = []  # o que o Claude ainda não sabe que foi conversado
         self.janela_aberta = False
         self.escuta = escuta_mod.Escuta(ao_nivel=self._ao_nivel, ao_fim=self._ao_fim_escuta)
 
@@ -152,7 +186,20 @@ class Cerebro:
         self._provedor_ativo = "claude"
         self._fallback_ativo = False
         self._definir_estado("pensando")
+        if time.time() < self._claude_volta_em and self._iniciar_fallback(
+                "Claude", {"result": f"no limite até {datetime.fromtimestamp(self._claude_volta_em):%H:%M}"}):
+            return
+        self._mostrar_modelo("claude")
+        if self._atendido_na_reserva:
+            texto = ("[contexto] Enquanto você esteve indisponível, o modo reserva (Gemini/Codex) atendeu o senhor:\n"
+                     f"{reserva.conversa(self._atendido_na_reserva)}\n[fim do contexto]\n\n{texto}")
         self.claude.enviar(texto)
+
+    def _mostrar_modelo(self, provedor: str) -> None:
+        nome = NOMES.get(provedor, provedor)
+        if self._sistema.get("modelo") != nome:
+            self._sistema = {**self._sistema, "modelo": nome}
+            self.publicar(self._sistema)
 
     def super_j(self) -> None:
         self.janela_aberta = True
@@ -209,9 +256,10 @@ class Cerebro:
         if not processo:
             return False
         detalhe = str(evento.get("result") or "")[:300]
-        print(f"cérebro: {provedor} falhou ({detalhe!r}); tentando {destino}", flush=True)
+        print(f"cérebro: {provedor} indisponível ({detalhe!r}); tentando {destino}", flush=True)
         self._fallback_ativo = True
         self._provedor_ativo = destino
+        self._mostrar_modelo(destino)
         self._resposta = ""
         self._chamar_voz("/parar")
         self._separador.reiniciar()
@@ -223,6 +271,17 @@ class Cerebro:
         resumo = projetos.formatar_lista(self._projetos, time.time()) if self._projetos else ""
         processo.enviar(reserva.mensagem(self._entrada_atual[0], historico, projetos=resumo))
         return True
+
+    def _tentar_reserva(self, provedor: str, evento: dict) -> bool:
+        erro = str(evento.get("result") or "")
+        tipo = tipo_de_erro(erro)
+        if tipo == "rede":  # sem internet o Gemini e o Codex também falham: avisa logo, sem cascata de minutos
+            return False
+        if provedor == "Claude" and tipo == "limite":
+            self._claude_volta_em = volta_do_limite(erro, datetime.now().astimezone())
+            print(f"cérebro: Claude no limite; modo reserva até "
+                  f"{datetime.fromtimestamp(self._claude_volta_em):%H:%M}", flush=True)
+        return self._iniciar_fallback(provedor, evento)
 
     def _ao_evento_modelo(self, evento: dict, provedor: str) -> None:
         tipo = evento.get("type")
@@ -238,7 +297,7 @@ class Cerebro:
                 self._acrescentar(delta.get("text", ""))
         elif tipo == "result":
             with self._despacho:
-                if evento.get("is_error") and self._iniciar_fallback(provedor, evento):
+                if evento.get("is_error") and self._tentar_reserva(provedor, evento):
                     return
                 self._fim_do_turno(evento, provedor)
         elif tipo == "jarvis_reiniciando":
@@ -263,6 +322,7 @@ class Cerebro:
             return
         turno.encerrar()
         self._separador.fim(texto)
+        self._lembrar_para_o_claude(texto)
         if texto.strip():
             self._registrar("jarvis", texto)
         self.publicar({"tipo": "resposta_fim", "texto": texto})
@@ -273,6 +333,17 @@ class Cerebro:
         self._fallback_ativo = False
         self._entrada_atual = None
 
+    def _lembrar_para_o_claude(self, resposta: str) -> None:
+        if self._provedor_ativo == "claude":
+            self._atendido_na_reserva = []  # o Claude respondeu: já recebeu o contexto
+            return
+        texto, tipo = self._entrada_atual or ("", "")
+        if tipo in ("voz", "texto"):
+            self._atendido_na_reserva.append({"papel": "usuario", "texto": texto})
+        if resposta.strip():
+            self._atendido_na_reserva.append({"papel": "jarvis", "texto": resposta})
+        self._atendido_na_reserva = self._atendido_na_reserva[-MAX_ATENDIDO_NA_RESERVA:]
+
     def _erro_do_modelo(self, evento: dict, provedor: str) -> None:
         """Erros de modelo viram uma frase curta em português — nunca lidos crus."""
         print(f"cérebro: erro do {provedor}: {evento.get('subtype')} {str(evento.get('result'))[:300]!r}", flush=True)
@@ -280,6 +351,11 @@ class Cerebro:
         if evento.get("subtype") == "error_restart":
             texto, fala = (f"Perdi a conexão com o {provedor} no meio da resposta, senhor. Pode repetir, por favor?",
                            "Perdi a conexão, senhor. Pode repetir?")
+        elif tipo_de_erro(str(evento.get("result") or "")) == "rede":
+            self._eventos_pausados_ate = time.time() + PAUSA_APOS_ERRO_S
+            texto, fala = ("Estou sem conexão com a internet agora, senhor, e nenhum modelo responde assim. "
+                           "Tente de novo quando a rede voltar.",
+                           "Estou sem internet agora, senhor.")
         else:
             self._eventos_pausados_ate = time.time() + PAUSA_APOS_ERRO_S
             texto, fala = (f"Não consegui responder agora, senhor: o {provedor} devolveu um erro (talvez limite de uso). "
@@ -419,7 +495,8 @@ class Cerebro:
         if self.bloqueada():
             self._estava_bloqueada = True
             return
-        if self._ocupado() and time.time() - self._ultima_saida >= TRAVADO_S:
+        limite = TRAVADO_S if self._provedor_ativo == "claude" else TRAVADO_RESERVA_S
+        if self._ocupado() and time.time() - self._ultima_saida >= limite:
             print("cérebro: modelo sem resposta há muito tempo; reiniciando", flush=True)
             self._ultima_saida = time.time()
             processo = {"claude": self.claude, "gemini": self.gemini, "codex": self.codex}.get(

@@ -443,3 +443,88 @@ def test_projetos_com_orca_fechado_mantem_a_ultima_lista(dados_tmp, monkeypatch)
     monkeypatch.setattr(projetos, "listar", fechado)
     c._atualizar_projetos()
     assert [p.nome for p in c._projetos] == ["x"]
+
+
+# ---------- modo reserva: limite, rede, contexto e indicador ----------
+
+def test_volta_do_limite_le_o_horario_da_mensagem():
+    from datetime import datetime
+
+    agora = datetime(2026, 10, 19, 20, 10).astimezone()
+    msg = "You've hit your session limit · resets 11:10pm (America/Sao_Paulo)"
+    assert cerebro_main.volta_do_limite(msg, agora) == datetime(2026, 10, 19, 23, 11).astimezone().timestamp()
+    tarde = datetime(2026, 10, 19, 23, 30).astimezone()
+    assert cerebro_main.volta_do_limite(msg, tarde) == datetime(2026, 10, 20, 23, 11).astimezone().timestamp()
+    assert cerebro_main.volta_do_limite("resets 3am", agora) == datetime(2026, 10, 20, 3, 1).astimezone().timestamp()
+    assert cerebro_main.volta_do_limite("usage limit", agora) == agora.timestamp() + cerebro_main.ESPERA_LIMITE_S
+
+
+def test_tipo_de_erro():
+    assert cerebro_main.tipo_de_erro("API Error: Can't reach the API server (EAI_AGAIN)") == "rede"
+    assert cerebro_main.tipo_de_erro("You've hit your session limit · resets 11:10pm") == "limite"
+    assert cerebro_main.tipo_de_erro("authentication failed or timed out") == "outro"
+
+
+@pytest.fixture
+def com_reserva(dados_tmp, monkeypatch):
+    monkeypatch.setattr(reserva, "estado_orca", lambda: "")
+    claude, gemini = ClaudeFalso(), CodexFalso()
+    c = Cerebro(claude=claude, gemini=gemini, falar=lambda t: True, bloqueada=lambda: False,
+                chamar_voz=lambda *a, **k: {})
+    publicados = []
+    c.publicar = publicados.append
+    return c, claude, gemini, publicados
+
+
+def _responder(c, ao_evento, processo, texto):
+    processo.ocupado = False
+    ao_evento({"type": "result", "is_error": False, "result": texto})
+
+
+def test_limite_do_claude_manda_os_proximos_turnos_direto_a_reserva(com_reserva):
+    c, claude, gemini, publicados = com_reserva
+    c.mensagem_usuario("oi", falada=False)
+    claude.ocupado = False
+    c.ao_evento_claude({"type": "result", "is_error": True, "result": "You've hit your session limit · resets 11pm"})
+    assert len(gemini.enviados) == 1
+    assert {"tipo": "sistema", "voz": True, "orca": True, "modelo": "Gemini"} in publicados
+    _responder(c, c.ao_evento_gemini, gemini, "Olá, senhor.\n\n🔊 Olá, senhor.")
+
+    c.mensagem_usuario("como está o portfólio?", falada=False)
+    assert claude.enviados == ["oi"]  # não gastou mais uma tentativa no Claude
+    assert gemini.enviados[-1].endswith("## Mensagem atual\ncomo está o portfólio?")
+    _responder(c, c.ao_evento_gemini, gemini, "Concluiu o deploy, senhor.")
+
+    c._claude_volta_em = time.time() - 1  # passou o horário do limite
+    c.mensagem_usuario("e agora?", falada=False)
+    contexto = claude.enviados[-1]
+    assert contexto.startswith("[contexto] Enquanto você esteve indisponível")
+    assert "Senhor: como está o portfólio?\nJarvis: Concluiu o deploy, senhor." in contexto
+    assert contexto.endswith("[fim do contexto]\n\ne agora?")
+    assert [p["modelo"] for p in publicados if p["tipo"] == "sistema"][-1] == "Claude"
+    _responder(c, c.ao_evento_claude, claude, "Tudo em ordem, senhor.")
+    c.mensagem_usuario("obrigado", falada=False)
+    assert claude.enviados[-1] == "obrigado"  # contexto entregue uma vez só
+
+
+def test_sem_internet_nao_cascateia_e_avisa(com_reserva):
+    c, claude, gemini, publicados = com_reserva
+    c.mensagem_usuario("oi", falada=False)
+    claude.ocupado = False
+    c.ao_evento_claude({"type": "result", "is_error": True,
+                        "result": "API Error: Can't reach the API server — check your internet or DNS (EAI_AGAIN)"})
+    assert gemini.enviados == []
+    fim = [p for p in publicados if p["tipo"] == "resposta_fim"][-1]
+    assert "sem conexão com a internet" in fim["texto"]
+
+
+def test_reserva_muda_por_90s_e_derrubada(com_reserva):
+    c, claude, gemini, _ = com_reserva
+    reiniciados = []
+    gemini.reiniciar = lambda: reiniciados.append("gemini")
+    c.mensagem_usuario("oi", falada=False)
+    claude.ocupado = False
+    c.ao_evento_claude({"type": "result", "is_error": True, "result": "erro qualquer"})
+    c._ultima_saida = time.time() - cerebro_main.TRAVADO_RESERVA_S - 1
+    c._despachar()
+    assert reiniciados == ["gemini"]
