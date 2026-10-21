@@ -14,7 +14,7 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from jarvis import consultas, orca, pendencias, projetos, turno, voz_cliente
+from jarvis import consultas, local, orca, pendencias, projetos, turno, voz_cliente
 from jarvis.cerebro import escuta as escuta_mod
 from jarvis.cerebro import reserva
 from jarvis.cerebro.eventos import FilaEventos
@@ -35,6 +35,7 @@ _HORA = re.compile(r"(\d{1,2})(?::(\d{2}))?\s*([ap]m)", re.IGNORECASE)
 PAUSA_APOS_ERRO_S = 600
 MAX_HISTORICO = 50
 INTERVALO_SISTEMA_S = 60
+INTERVALO_CLIMA_S = 900  # o clima muda devagar: uma consulta a cada 15 min basta
 
 
 def tipo_de_erro(texto: str) -> str:
@@ -124,6 +125,7 @@ class Cerebro:
         self._projetos: list[projetos.Projeto] = []
         self._sistema: dict = {"tipo": "sistema", "voz": True, "orca": True, "modelo": "Claude"}
         self._ultimo_sistema = 0.0
+        self._ultimo_clima = 0.0
         self._estado = "ocioso"
         self._pendencia_no_turno = False
         self._calar_turno = False  # o senhor falou por cima: o resto desta resposta não é falado
@@ -518,11 +520,16 @@ class Cerebro:
 
     def _atualizar_sistema(self) -> None:
         voz_ok = self._chamar_voz("/saude") is not None
-        try:
-            clima = consultas.clima_curto(consultas.buscar_clima(timeout=5))
-        except Exception:
-            clima = self._sistema.get("clima", "")
-        novo = {**self._sistema, "voz": voz_ok, "clima": clima}
+        novo = {**self._sistema, "voz": voz_ok}
+        if time.time() - self._ultimo_clima >= INTERVALO_CLIMA_S:
+            lugar = local.atual()
+            novo.update(cidade=lugar.cidade, fuso=lugar.fuso)
+            try:
+                novo["clima"] = consultas.clima_curto(consultas.buscar_clima(lugar.latitude, lugar.longitude,
+                                                                               timeout=5), lugar.cidade)
+                self._ultimo_clima = time.time()
+            except Exception:
+                pass  # fica o último clima; tenta de novo no próximo minuto
         if novo != self._sistema:
             self._sistema = novo
             self.publicar(novo)

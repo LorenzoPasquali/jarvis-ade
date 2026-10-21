@@ -29,10 +29,10 @@ _WMO = {
 }
 
 URL_CLIMA = (
-    "https://api.open-meteo.com/v1/forecast?latitude=-23.55&longitude=-46.63"
+    "https://api.open-meteo.com/v1/forecast?latitude={latitude:.4f}&longitude={longitude:.4f}"
     "&current=temperature_2m,apparent_temperature,weather_code"
     "&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max"
-    "&timezone=America%2FSao_Paulo&forecast_days=1"
+    "&timezone=auto&forecast_days=1"
 )
 
 
@@ -105,20 +105,21 @@ def formatar_historico(eventos: list[dict], commits_por_projeto: dict[str, list[
     return "\n\n".join(blocos)
 
 
-def descrever_clima(dados: dict) -> str:
+def descrever_clima(dados: dict, cidade: str) -> str:
     atual, dia = dados["current"], dados["daily"]
     ceu = _WMO.get(atual["weather_code"], "tempo indefinido")
-    return (f"São Paulo agora: {round(atual['temperature_2m'])} °C "
+    return (f"{cidade} agora: {round(atual['temperature_2m'])} °C "
             f"(sensação {round(atual['apparent_temperature'])} °C), {ceu}. "
             f"Hoje: mínima {round(dia['temperature_2m_min'][0])} °C, máxima {round(dia['temperature_2m_max'][0])} °C, "
             f"chance de chuva {dia['precipitation_probability_max'][0]}%.")
 
 
-def clima_curto(dados: dict) -> str:
+def clima_curto(dados: dict, cidade: str) -> str:
     atual = dados["current"]
-    return f"{round(atual['temperature_2m'])} °C, {_WMO.get(atual['weather_code'], 'tempo indefinido')} em São Paulo"
+    return f"{round(atual['temperature_2m'])} °C, {_WMO.get(atual['weather_code'], 'tempo indefinido')} em {cidade}"
 
 
-def buscar_clima(timeout: float = 10.0) -> dict:
-    with urllib.request.urlopen(URL_CLIMA, timeout=timeout) as resposta:
+def buscar_clima(latitude: float, longitude: float, timeout: float = 10.0) -> dict:
+    url = URL_CLIMA.format(latitude=latitude, longitude=longitude)
+    with urllib.request.urlopen(url, timeout=timeout) as resposta:
         return json.load(resposta)

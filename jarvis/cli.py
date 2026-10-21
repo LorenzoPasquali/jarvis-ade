@@ -113,10 +113,11 @@ def _historico(args: argparse.Namespace) -> int:
 
 
 def _clima(_: argparse.Namespace) -> int:
-    from jarvis import consultas
+    from jarvis import consultas, local
 
+    lugar = local.atual()
     try:
-        print(consultas.descrever_clima(consultas.buscar_clima()))
+        print(consultas.descrever_clima(consultas.buscar_clima(lugar.latitude, lugar.longitude), lugar.cidade))
     except Exception:
         print("Não consegui consultar o clima agora.")
         return 1
@@ -314,7 +315,7 @@ def _parser() -> argparse.ArgumentParser:
     modo.add_argument("--seguir", action="store_true", help="fica ouvindo e imprime cada evento novo")
     sub("historico", "o que aconteceu nos projetos num período", _historico).add_argument(
         "--desde", default="1d", help="1d, 7d, 12h ou data ISO (padrão 1d)")
-    sub("clima", "clima de agora em São Paulo", _clima)
+    sub("clima", "clima de agora onde o senhor está (Caxias do Sul por padrão)", _clima)
     p = sub("enviar", "envia uma mensagem a um agente e registra a ação", _enviar)
     alvo = p.add_mutually_exclusive_group(required=True)
     alvo.add_argument("--projeto", help="nome do projeto ou worktree no Orca")

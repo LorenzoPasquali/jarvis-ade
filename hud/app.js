@@ -224,10 +224,12 @@
 
   // ---------- sistema ----------
 
+  let fuso; // fuso de onde o senhor está (vem do cérebro); sem ele, o do computador
+
   function atualizarRelogio() {
     const agora = new Date();
-    $("hora").textContent = agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-    const data = agora.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
+    $("hora").textContent = agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: fuso });
+    const data = agora.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", timeZone: fuso });
     $("data").textContent = data.charAt(0).toUpperCase() + data.slice(1);
   }
 
@@ -235,6 +237,13 @@
     if ("voz" in evento) $("servico-voz").dataset.ok = String(evento.voz);
     if ("orca" in evento) $("servico-orca").dataset.ok = String(evento.orca);
     if (evento.clima) $("clima").textContent = evento.clima;
+    if (evento.fuso && evento.fuso !== fuso) {
+      try {
+        new Intl.DateTimeFormat("pt-BR", { timeZone: evento.fuso });
+        fuso = evento.fuso;
+        atualizarRelogio();
+      } catch (_) { /* fuso desconhecido: fica o do computador */ }
+    }
     if (evento.modelo) {
       const modelo = $("servico-modelo");
       const reserva = evento.modelo !== "Claude";
@@ -362,7 +371,7 @@
     "🔊 Dois agentes precisam do senhor: o de saúde quer seguir com o plano cinco e o portfólio pede para rodar o build.";
 
   function demoQuadroFinal() {
-    aplicar({ tipo: "sistema", voz: true, orca: true, clima: "16 °C, nublado em São Paulo" });
+    aplicar({ tipo: "sistema", voz: true, orca: true, clima: "16 °C, nublado em Caxias do Sul" });
     aplicar({ tipo: "sessoes", itens: SESSOES_DEMO });
     aplicar({ tipo: "projetos", itens: PROJETOS_DEMO });
     aplicar({ tipo: "historico", mensagens: [
@@ -388,7 +397,7 @@
   }
 
   function demoAoVivo() {
-    aplicar({ tipo: "sistema", voz: true, orca: true, clima: "16 °C, nublado em São Paulo" });
+    aplicar({ tipo: "sistema", voz: true, orca: true, clima: "16 °C, nublado em Caxias do Sul" });
     aplicar({ tipo: "sessoes", itens: SESSOES_DEMO });
     aplicar({ tipo: "projetos", itens: PROJETOS_DEMO });
     aplicar({ tipo: "historico", mensagens: [
