@@ -225,12 +225,31 @@
         atualizarRelogio();
       } catch (_) { /* fuso desconhecido: fica o do computador */ }
     }
+    if ("mudo" in evento) mostrarMudo(Boolean(evento.mudo));
     if (evento.modelo) {
       const modelo = $("servico-modelo");
       const reserva = evento.modelo !== "Claude";
       modelo.textContent = reserva ? `${evento.modelo} · reserva` : evento.modelo;
       modelo.dataset.reserva = String(reserva);
     }
+  }
+
+  // Botão de voz: o mesmo que `jarvis mudo on|off`. O estado vem do cérebro (evento "sistema").
+  let mudo = false;
+
+  function mostrarMudo(valor) {
+    mudo = valor;
+    const botao = $("mudo");
+    botao.textContent = mudo ? "Mudo" : "Voz ligada";
+    botao.title = mudo ? "Voltar a ouvir as respostas" : "Silenciar as respostas (só texto)";
+    botao.dataset.mudo = String(mudo);
+  }
+
+  function alternarMudo() {
+    const anterior = mudo;
+    mostrarMudo(!mudo);
+    if (DEMO) return;
+    enviarAoCerebro("/api/mudo", { ligado: mudo }).then((r) => { if (!r || !r.ok) mostrarMudo(anterior); });
   }
 
   function definirEstado(valor) {
@@ -339,6 +358,14 @@
     if (ponte) ponte.postMessage("fechar");
   }
 
+  // Reduzir: a conversa continua no canto da tela (a faixa compacta), ainda ouvindo e com caixa para digitar.
+  function reduzir() {
+    const ponte = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.jarvis;
+    if (!ponte) return;
+    document.body.classList.remove("aberto");
+    ponte.postMessage("reduzir");
+  }
+
   function enviarAoCerebro(rota, corpo) {
     return fetch(rota, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) })
       .catch(() => null);
@@ -360,6 +387,8 @@
     }
   });
   $("veu").addEventListener("click", fechar);
+  $("mudo").addEventListener("click", alternarMudo);
+  $("reduzir").addEventListener("click", reduzir);
   $("entrada").addEventListener("submit", (e) => {
     e.preventDefault();
     const texto = $("texto").value.trim();

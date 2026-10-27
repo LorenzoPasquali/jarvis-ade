@@ -54,3 +54,25 @@ def test_app_cuida_de_cartao_vencido_e_resposta_em_andamento():
     assert "status === 409" in js or "status == 409" in js
     assert 'replaceChildren()' in js.split('case "historico"')[1].split("break")[0]
     assert "escrevendo" in js.split('case "usuario"')[1].split("break")[0]
+
+
+def test_janela_expandida_tem_botao_de_voz_e_reduzir():
+    html = (RAIZ / "hud/index.html").read_text()
+    js = (RAIZ / "hud/app.js").read_text()
+    assert 'id="mudo"' in html and 'id="reduzir"' in html
+    assert '"/api/mudo"' in js and 'postMessage("reduzir")' in js
+    assert "mudo" in js.split("function sistema")[1].split("\n  }\n")[0]
+
+
+def test_compacta_deixa_digitar_e_tem_botao_de_voz():
+    html = (RAIZ / "hud/aviso.html").read_text()
+    assert 'id="digitar"' in html and 'id="mudo"' in html
+    assert '"/api/mensagem"' in html and '"/api/mudo"' in html
+    assert 'case "sistema"' in html
+
+
+def test_janela_reduz_para_a_compacta_e_so_ela_pega_foco():
+    py = (RAIZ / "hud/janela.py").read_text()
+    assert '"reduzir"' in py and "mostrar_compacta(focar=True)" in py
+    assert "set_accept_focus(True)" in py and "set_accept_focus(False)" in py
+    assert "set_focus_on_map(False)" in py

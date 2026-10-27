@@ -96,16 +96,20 @@ class JanelaJarvis:
         self.web.load_uri(url)
         self.web.show()
         self.aviso_web: WebKit2.WebView | None = None
+        self.compacta = False  # a faixa do canto está com a conversa (e não só com uma notificação)
         self.aviso = self._criar_aviso(url) if com_aviso else None
 
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1, self.mostrar)
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, self._sair)
 
     def mostrar(self, *_args) -> bool:
-        """Super+J ou "Jarvis": com um app na frente, a conversa fica no canto (compacta); sem nada, janela inteira."""
+        """Super+J ou "Jarvis": com um app na frente, a conversa fica no canto (compacta); sem nada, janela inteira.
+
+        Com a compacta já aberta (mesmo com o foco nela, para digitar), continua nela.
+        """
         tela = self.janela.get_screen()
         if (self.aviso is not None and not self.janela.get_visible()
-                and app_em_foco(tela, self._proprias())):
+                and (self.compacta or app_em_foco(tela, self._proprias()))):
             self.mostrar_compacta()
         else:
             self.mostrar_completa()
@@ -125,12 +129,22 @@ class JanelaJarvis:
         area = (monitor or display.get_monitor(0)).get_workarea()  # sem a barra do topo
         self.aviso.move(area.x + area.width - LARGURA_AVISO - 24, area.y + 16)
 
-    def mostrar_compacta(self) -> None:
+    def mostrar_compacta(self, focar: bool = False) -> None:
+        """Conversa no canto. Não toma o foco ao aparecer; aceita quando o senhor clica para digitar.
+
+        `focar`: veio do "Reduzir" da janela inteira; a faixa já pega o foco, com o cursor na caixa de texto.
+        """
+        self.compacta = True
+        self.aviso.set_accept_focus(True)
         self._posicionar_aviso()
         self.aviso.show()
-        self._js_aviso("window.jarvis && window.jarvis.compacto(true)")
+        if focar:
+            self.aviso.present_with_time(Gtk.get_current_event_time() or 0)
+            self.aviso_web.grab_focus()
+        self._js_aviso(f"window.jarvis && window.jarvis.compacto(true, {'true' if focar else 'false'})")
 
     def mostrar_completa(self) -> None:
+        self.compacta = False
         if self.aviso is not None:
             self._js_aviso("window.jarvis && window.jarvis.compacto(false)")
             self.aviso.hide()
@@ -149,7 +163,7 @@ class JanelaJarvis:
         self.janela.hide()
 
     def _criar_aviso(self, url: str) -> Gtk.Window:
-        """Faixa no canto da tela, que nunca pega foco: a última fala (janela fechada) ou a conversa compacta."""
+        """Faixa no canto da tela: a última fala (janela fechada, nunca pega o foco) ou a conversa compacta."""
         aviso = Gtk.Window(title="Jarvis — aviso")
         _janela_transparente(aviso)
         aviso.set_accept_focus(False)
@@ -166,15 +180,21 @@ class JanelaJarvis:
         return aviso
 
     def _ao_mensagem(self, _gerente, resultado) -> None:
-        if _texto(resultado) == "fechar":
+        valor = _texto(resultado)
+        if valor == "fechar":
+            self.esconder()
+        elif valor == "reduzir" and self.aviso is not None:
+            self.mostrar_compacta(focar=True)  # antes de esconder: o foco passa direto para a faixa
             self.esconder()
 
     def _ao_mensagem_aviso(self, _gerente, resultado) -> None:
         valor = _texto(resultado)
         if valor == "mostrar_aviso" and not self.janela.get_visible():
+            self.aviso.set_accept_focus(False)  # notificação: não rouba o foco nem com um clique
             self._posicionar_aviso()
             self.aviso.show()
         elif valor in ("esconder_aviso", "fechar_compacto"):
+            self.compacta = False
             self.aviso.hide()
         elif valor == "expandir":
             self.mostrar_completa()

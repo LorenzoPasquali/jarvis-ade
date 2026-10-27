@@ -480,7 +480,7 @@ def test_limite_do_claude_manda_os_proximos_turnos_direto_a_reserva(com_reserva)
     claude.ocupado = False
     c.ao_evento_claude({"type": "result", "is_error": True, "result": "You've hit your session limit · resets 11pm"})
     assert len(gemini.enviados) == 1
-    assert {"tipo": "sistema", "voz": True, "orca": True, "modelo": "Gemini"} in publicados
+    assert {"tipo": "sistema", "voz": True, "orca": True, "modelo": "Gemini", "mudo": False} in publicados
     _responder(c, c.ao_evento_gemini, gemini, "Olá, senhor.\n\n🔊 Olá, senhor.")
 
     c.mensagem_usuario("como está o portfólio?", falada=False)
@@ -521,3 +521,45 @@ def test_reserva_muda_por_90s_e_derrubada(com_reserva):
     c._ultima_saida = time.time() - cerebro_main.TRAVADO_RESERVA_S - 1
     c._despachar()
     assert reiniciados == ["gemini"]
+
+
+# ---------- botão de voz (mudo) ----------
+
+def test_botao_de_voz_liga_o_mudo_e_avisa_as_janelas(dados_tmp):
+    chamadas = []
+
+    def voz(rota, corpo=None, **_k):
+        chamadas.append((rota, corpo))
+        return {"ok": True, "mudo": bool(corpo and corpo.get("ligado"))}
+
+    c = Cerebro(claude=ClaudeFalso(), falar=lambda t: True, bloqueada=lambda: False, chamar_voz=voz)
+    srv = criar(c, porta=0)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+    try:
+        linhas = ler_sse(base + "/api/eventos", ate=lambda e: e["tipo"] == "sistema" and e.get("mudo"),
+                         depois=lambda: post(base + "/api/mudo", {"ligado": True}, origin=base))
+    finally:
+        srv.shutdown()
+    assert ("/mudo", {"ligado": True}) in chamadas
+    assert linhas[-1]["mudo"] is True and c.estado_inicial()[2]["mudo"] is True
+
+
+def test_botao_de_voz_com_a_voz_fora_do_ar(servidor_cerebro):
+    base, c = servidor_cerebro
+    c._chamar_voz = lambda *a, **k: None
+    assert post(base + "/api/mudo", {"ligado": True}) == 503
+    assert c._sistema["mudo"] is False
+
+
+def test_sistema_traz_o_mudo_do_servidor_de_voz(dados_tmp, monkeypatch):
+    monkeypatch.setattr(cerebro_main.projetos, "listar", lambda: [])
+    saude = {"ok": True, "falando": False, "fila": 0, "mudo": True}
+    c = Cerebro(claude=ClaudeFalso(), falar=lambda t: True, bloqueada=lambda: False,
+                chamar_voz=lambda *a, **k: saude)
+    c._ultimo_clima = time.time()  # sem consultar o clima
+    c._atualizar_sistema()
+    assert c._sistema["mudo"] is True
+    c._chamar_voz = lambda *a, **k: None  # voz fora do ar: fica o último estado conhecido
+    c._atualizar_sistema()
+    assert c._sistema["voz"] is False and c._sistema["mudo"] is True

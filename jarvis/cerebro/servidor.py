@@ -94,6 +94,11 @@ def criar(cerebro, porta: int = 8766, pasta_hud: Path = RAIZ / "hud") -> Threadi
             elif rota == "/api/super-j":
                 cerebro.super_j()
                 self._responder(200)
+            elif rota == "/api/mudo":
+                if cerebro.definir_mudo(bool(corpo.get("ligado"))):
+                    self._responder(200)
+                else:
+                    self._responder(503, {"erro": "servidor de voz indisponível"})
             elif rota == "/api/fechar":
                 cerebro.fechar_janela()
                 self._responder(200)

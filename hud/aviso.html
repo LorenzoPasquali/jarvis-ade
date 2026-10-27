@@ -58,6 +58,7 @@
     }
     .acoes button:hover { border-color: var(--holo); background: rgba(139, 233, 255, 0.12); }
     #fechar { padding: 4px 10px; }
+    #mudo[data-mudo="true"] { border-color: rgba(255, 184, 77, 0.6); color: var(--ambar); }
 
     /* notificação: só a última fala, curta */
     #texto { margin: 10px 0 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
@@ -76,6 +77,26 @@
     #pergunta:empty, #resposta:empty, #progresso:empty { display: none; }
     #confirmacao { margin: 8px 0 0; color: var(--ambar); font-size: 14px; }
 
+    /* caixa para digitar: a faixa só pega o foco quando o senhor clica nela */
+    #entrada {
+      display: flex; align-items: center; gap: 8px;
+      margin: 12px 0 0; padding: 4px 4px 4px 14px;
+      border: 1px solid var(--linha); border-radius: 999px;
+      background: rgba(2, 12, 18, 0.72);
+    }
+    #entrada:focus-within { border-color: var(--holo); }
+    #digitar {
+      flex: 1; min-width: 0; border: 0; outline: none; background: transparent;
+      color: var(--gelo); font: inherit; font-size: 14px;
+    }
+    #digitar::placeholder { color: var(--nevoa); }
+    #entrada button {
+      padding: 5px 14px; border: 0; border-radius: 999px;
+      background: rgba(139, 233, 255, 0.16); color: var(--holo);
+      font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    button:focus-visible { outline: 2px solid var(--gelo); outline-offset: 2px; }
+
     @media (prefers-reduced-motion: reduce) {
       #aviso { transition: none; translate: 0 0; }
       .anel { animation: none !important; transition: none; }
@@ -88,6 +109,7 @@
       <span class="anel" aria-hidden="true"></span>
       <p class="titulo" style="margin:0"><span class="nome">Jarvis</span><span id="estado"></span></p>
       <div class="acoes">
+        <button id="mudo" type="button" title="Silenciar as respostas (só texto)">Voz ligada</button>
         <button id="expandir" type="button">Expandir</button>
         <button id="fechar" type="button" aria-label="Fechar e parar de ouvir">×</button>
       </div>
@@ -98,14 +120,19 @@
       <div id="resposta"></div>
       <p id="progresso"></p>
       <p id="confirmacao" hidden>O Jarvis precisa da sua confirmação. Expanda para responder.</p>
+      <form id="entrada" autocomplete="off">
+        <input id="digitar" placeholder="Digite para o Jarvis" aria-label="Mensagem para o Jarvis">
+        <button type="submit">Enviar</button>
+      </form>
     </div>
   </div>
   <script>
     "use strict";
-    // Dois modos na mesma faixa do canto da tela, que nunca toma o foco:
+    // Dois modos na mesma faixa do canto da tela, que não toma o foco ao aparecer:
     // - notificação: mostra por alguns segundos a última fala, com a janela do Jarvis fechada;
-    // - conversa compacta: o senhor chamou o Jarvis com outro app na frente; a conversa acontece aqui,
-    //   com "Expandir" para a janela inteira e "×" para fechar e parar de ouvir.
+    // - conversa compacta: o senhor chamou o Jarvis com outro app na frente (ou reduziu a janela inteira);
+    //   a conversa acontece aqui, falando ou digitando (clicar na caixa dá o foco à faixa), com o botão de voz,
+    //   "Expandir" para a janela inteira e "×" para fechar e parar de ouvir.
     const ponte = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.jarvis;
     const $ = (id) => document.getElementById(id);
     const caixa = $("aviso");
@@ -114,8 +141,14 @@
     let compacto = false;
     let esconder = null;
     let resposta = "";
+    let mudo = false;
 
     function avisar(mensagem) { if (ponte) ponte.postMessage(mensagem); }
+
+    function enviarAoCerebro(rota, corpo) {
+      return fetch(rota, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) })
+        .catch(() => null);
+    }
 
     function medir() {
       requestAnimationFrame(() => avisar(`altura:${Math.ceil(caixa.getBoundingClientRect().height + 16)}`));
@@ -138,16 +171,32 @@
     }
 
     // Sem nada acontecendo por um tempo depois da resposta, a conversa compacta some (e o Jarvis para de ouvir).
+    // Enquanto o senhor digita, ela fica.
     function agendarFechar() {
       clearTimeout(esconder);
-      if (document.body.dataset.estado === "ocioso") esconder = setTimeout(fechar, FECHA_SOZINHO_MS);
+      const digitando = document.activeElement === $("digitar") || $("digitar").value.trim();
+      if (document.body.dataset.estado === "ocioso" && !digitando) esconder = setTimeout(fechar, FECHA_SOZINHO_MS);
     }
 
     function fechar() {
       clearTimeout(esconder);
-      fetch("/api/fechar", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
-        .catch(() => null);
+      enviarAoCerebro("/api/fechar", {});
       sair();
+    }
+
+    // Botão de voz: o mesmo que `jarvis mudo on|off`. O estado vem do cérebro (evento "sistema").
+    function mostrarMudo(valor) {
+      mudo = valor;
+      const botao = $("mudo");
+      botao.textContent = mudo ? "Mudo" : "Voz ligada";
+      botao.title = mudo ? "Voltar a ouvir as respostas" : "Silenciar as respostas (só texto)";
+      botao.dataset.mudo = String(mudo);
+    }
+
+    function alternarMudo() {
+      const anterior = mudo;
+      mostrarMudo(!mudo);
+      enviarAoCerebro("/api/mudo", { ligado: mudo }).then((r) => { if (!r || !r.ok) mostrarMudo(anterior); });
     }
 
     function sair() {
@@ -171,13 +220,15 @@
     }
 
     window.jarvis = {
-      compacto(ativo) {
+      // `focar`: veio do "Reduzir" da janela inteira; o cursor já vai para a caixa de texto.
+      compacto(ativo, focar = false) {
         if (!ativo) { if (compacto) sair(); return; }
         compacto = true;
         clearTimeout(esconder);
         document.body.classList.add("compacto");
         $("texto").textContent = "";
         caixa.classList.add("visivel");
+        if (focar) $("digitar").focus();
         medir();
         agendarFechar();
       },
@@ -185,6 +236,17 @@
 
     $("expandir").addEventListener("click", () => { clearTimeout(esconder); avisar("expandir"); });
     $("fechar").addEventListener("click", fechar);
+    $("mudo").addEventListener("click", alternarMudo);
+    $("digitar").addEventListener("focus", () => clearTimeout(esconder));
+    $("digitar").addEventListener("blur", () => { if (compacto) agendarFechar(); });
+    $("entrada").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const texto = $("digitar").value.trim();
+      if (!texto) return;
+      $("digitar").value = "";
+      enviarAoCerebro("/api/mensagem", { texto });
+    });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && compacto) fechar(); });
 
     function aplicar(evento) {
       switch (evento.tipo) {
@@ -206,6 +268,7 @@
           break;
         case "cartao": $("confirmacao").hidden = false; break;
         case "cartao_fim": $("confirmacao").hidden = true; break;
+        case "sistema": if ("mudo" in evento) mostrarMudo(Boolean(evento.mudo)); return;
         default: return;
       }
       if (compacto) {

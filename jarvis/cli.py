@@ -181,9 +181,12 @@ def _calar(_: argparse.Namespace) -> int:
 
 
 def _mudo(args: argparse.Namespace) -> int:
-    from jarvis import voz_cliente
+    from jarvis import hud_cli, voz_cliente
 
-    voz_cliente.mudo(args.estado == "on")
+    ligado = args.estado == "on"
+    # Pelo cérebro, para o botão de voz da janela mudar na hora; sem ele, direto no servidor de voz.
+    if not hud_cli.chamar_cerebro("/api/mudo", {"ligado": ligado}):
+        voz_cliente.mudo(ligado)
     print("Modo mudo ligado." if args.estado == "on" else "Modo mudo desligado.")
     return 0
 

@@ -1,5 +1,6 @@
 """`jarvis hud`: mostra a janela do Jarvis (Super+J) e avisa o cérebro para começar a ouvir."""
 
+import json
 import os
 import signal
 import subprocess
@@ -18,13 +19,18 @@ def _janela_viva(pid: int) -> bool:
         return False
 
 
-def _avisar_cerebro() -> None:
-    req = urllib.request.Request(f"{URL_CEREBRO}/api/super-j", data=b"{}",
+def chamar_cerebro(rota: str, corpo: dict | None = None) -> bool:
+    req = urllib.request.Request(f"{URL_CEREBRO}{rota}", data=json.dumps(corpo or {}).encode(),
                                  headers={"Content-Type": "application/json"})
     try:
         urllib.request.urlopen(req, timeout=2).close()
     except OSError:
-        pass
+        return False
+    return True
+
+
+def _avisar_cerebro() -> None:
+    chamar_cerebro("/api/super-j")
 
 
 def _iniciar_janela(demo: bool) -> None:

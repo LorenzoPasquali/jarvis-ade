@@ -123,7 +123,7 @@ class Cerebro:
         self._cartoes: set[int] = set()
         self._sessoes: list[dict] | None = None
         self._projetos: list[projetos.Projeto] = []
-        self._sistema: dict = {"tipo": "sistema", "voz": True, "orca": True, "modelo": "Claude"}
+        self._sistema: dict = {"tipo": "sistema", "voz": True, "orca": True, "modelo": "Claude", "mudo": False}
         self._ultimo_sistema = 0.0
         self._ultimo_clima = 0.0
         self._estado = "ocioso"
@@ -298,6 +298,15 @@ class Cerebro:
             self.ouvido.cancelar_espera()
         if self._estado == "ouvindo":
             self._definir_estado("pensando" if self._ocupado() else "ocioso")
+
+    def definir_mudo(self, ligado: bool) -> bool:
+        """Botão de voz da janela (ou `jarvis mudo on|off`): repassa ao servidor de voz e atualiza as janelas."""
+        resposta = self._chamar_voz("/mudo", {"ligado": ligado})
+        if resposta is None:
+            return False
+        self._sistema = {**self._sistema, "mudo": bool(resposta.get("mudo", ligado))}
+        self.publicar(self._sistema)
+        return True
 
     def _ao_nivel(self, nivel: float) -> None:
         self.publicar({"tipo": "nivel", "valor": round(nivel, 4)})
@@ -554,8 +563,10 @@ class Cerebro:
             self.publicar(self._sistema)
 
     def _atualizar_sistema(self) -> None:
-        voz_ok = self._chamar_voz("/saude") is not None
-        novo = {**self._sistema, "voz": voz_ok}
+        saude = self._chamar_voz("/saude")
+        novo = {**self._sistema, "voz": saude is not None}
+        if saude is not None:
+            novo["mudo"] = bool(saude.get("mudo"))
         if time.time() - self._ultimo_clima >= INTERVALO_CLIMA_S:
             lugar = local.atual()
             novo.update(cidade=lugar.cidade, fuso=lugar.fuso)

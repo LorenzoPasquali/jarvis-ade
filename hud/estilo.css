@@ -79,6 +79,28 @@ body.aberto { opacity: 1; }
   color: var(--holo);
 }
 
+.controles {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  pointer-events: auto;
+}
+
+.controles button {
+  padding: 6px 14px;
+  border: 1px solid var(--linha-forte);
+  border-radius: 999px;
+  background: rgba(2, 9, 14, 0.85);
+  color: var(--holo);
+  font: inherit;
+  font-size: 13px;
+  text-shadow: none;
+  cursor: pointer;
+}
+
+.controles button:hover { border-color: var(--holo); }
+#mudo[data-mudo="true"] { border-color: rgba(255, 184, 77, 0.6); color: var(--ambar); }
+
 .painel-sistema { text-align: right; }
 
 .hora {
