@@ -25,8 +25,9 @@ Liga três serviços do systemd do usuário, a janela no login, o comando `jarvi
 Aperte **Super+J** e fale, ou digite na caixa. Não precisa abrir o Orca nem um terminal.
 
 - No centro fica o núcleo do Jarvis, que mostra se ele está ouvindo, pensando ou falando. Em volta, em órbita, ficam as sessões dos agentes, e quem precisa de você aparece em âmbar.
-- **Voz ligada / Mudo**, no canto da janela inteira e na compacta, liga e desliga a resposta em áudio, como `jarvis mudo on|off` (que também muda o botão); o texto continua aparecendo.
-- **Microfone ligado / desligado**, ao lado, é separado do mudo: desligado, o Jarvis não ouve nada (o microfone fica fechado e nem "Jarvis" o chama) e Super+J abre a janela só para digitar. Fica assim até você religar, mesmo depois de reiniciar.
+- **Voz ligada / Mudo**, no canto da janela inteira, liga e desliga a resposta em áudio, como `jarvis mudo on|off` (que também muda o botão); o texto continua aparecendo.
+- **Microfone ligado / desligado**, ao lado, é separado do mudo: desligado, o Jarvis não ouve nada (o microfone fica fechado e nem "Jarvis" o chama) e Super+J abre a janela só para digitar.
+- Os dois ficam só na janela inteira (a compacta tem só **Expandir** e **×**) e ficam salvos: depois de reiniciar o cérebro, a voz ou o computador, o Jarvis volta como você deixou.
 - Uma ordem falada para um agente, uma nova regra ou um pedido de permissão vira um cartão com botões. Também dá para responder "sim" ou "não" por voz.
 - Com a janela fechada, ele continua avisando por voz, com uma faixa discreta no canto da tela que não tira o foco.
 - Com a tela bloqueada, ele fica quieto. Quando você voltar, faz um resumo do que aconteceu.
@@ -63,6 +64,7 @@ Exemplos:
   - `eventos.jsonl`: eventos do vigia;
   - `acoes.jsonl`: tudo o que foi enviado aos agentes;
   - `pendencias.json`: ações aguardando aprovação;
+  - `mudo` e `microfone-desligado`: existem enquanto a voz está muda e o microfone desligado;
   - `voz/jarvis-prompt.pt`: a voz preparada a partir do MP3.
 - Logs: `journalctl --user -u jarvis-cerebro`, `-u jarvis-voz` e `-u jarvis-vigia`.
 

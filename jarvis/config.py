@@ -18,6 +18,9 @@ def dados() -> Path:
     caminho.mkdir(parents=True, exist_ok=True)
     return caminho
 
+# Em dados/: a voz continua muda depois de reiniciar a voz ou o computador (o servidor de voz grava; o cérebro lê).
+MARCA_MUDO = "mudo"
+
 # Frases que o servidor de voz deixa geradas de antemão, para tocar sem esperar a síntese.
 SAUDACAO = "Como posso ajudar, senhor?"
 

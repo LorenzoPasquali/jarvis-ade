@@ -64,11 +64,11 @@ def test_janela_expandida_tem_botao_de_voz_e_reduzir():
     assert "mudo" in js.split("function sistema")[1].split("\n  }\n")[0]
 
 
-def test_compacta_deixa_digitar_e_tem_botao_de_voz():
+def test_compacta_deixa_digitar_sem_os_botoes_de_voz_e_microfone():
     html = (RAIZ / "hud/aviso.html").read_text()
-    assert 'id="digitar"' in html and 'id="mudo"' in html
-    assert '"/api/mensagem"' in html and '"/api/mudo"' in html
-    assert 'case "sistema"' in html
+    assert 'id="digitar"' in html and '"/api/mensagem"' in html
+    for fora in ['id="mudo"', 'id="microfone"', '"/api/mudo"', '"/api/microfone"']:
+        assert fora not in html, fora
 
 
 def test_janela_reduz_para_a_compacta_e_so_ela_pega_foco():
@@ -86,8 +86,6 @@ def test_compacta_mantem_o_anel_sem_o_texto_jarvis_pronto():
     assert ".anel\").title" in html  # o nome do estado ainda aparece ao passar o mouse
 
 
-def test_janelas_tem_botao_do_microfone():
-    for pagina in ["index.html", "aviso.html"]:
-        assert 'id="microfone"' in (RAIZ / f"hud/{pagina}").read_text(), pagina
+def test_janela_expandida_tem_botao_do_microfone():
+    assert 'id="microfone"' in (RAIZ / "hud/index.html").read_text()
     assert '"/api/microfone"' in (RAIZ / "hud/app.js").read_text()
-    assert '"/api/microfone"' in (RAIZ / "hud/aviso.html").read_text()

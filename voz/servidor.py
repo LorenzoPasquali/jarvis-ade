@@ -18,7 +18,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from jarvis.config import MP3_REFERENCIA, SAUDACAO, TEXTO_REFERENCIA, VOZ_PORTA, dados, frase_pronta  # noqa: E402
+from jarvis.config import (MARCA_MUDO, MP3_REFERENCIA, SAUDACAO, TEXTO_REFERENCIA, VOZ_PORTA, dados,  # noqa: E402
+                           frase_pronta)
 from jarvis.texto_fala import dividir_frases  # noqa: E402
 
 VELOCIDADE_FALA = 1.2
@@ -31,9 +32,10 @@ def _log(mensagem: str) -> None:
 class Locutor:
     """Fila de falas: gera a frase seguinte enquanto a atual toca; `parar()` descarta tudo."""
 
-    def __init__(self, motor, tocador):
+    def __init__(self, motor, tocador, marca_mudo: Path | None = None):
         self.motor, self.tocador = motor, tocador
-        self.mudo = False
+        self._marca_mudo = marca_mudo
+        self.mudo = bool(marca_mudo and marca_mudo.exists())
         self._ouvindo_ate = 0.0
         self._geracao = 0
         self._falando = False
@@ -58,6 +60,17 @@ class Locutor:
                 except queue.Empty:
                     break
         self.tocador.parar()
+
+    def definir_mudo(self, ligado: bool) -> None:
+        """`jarvis mudo on|off` ou o botão de voz. Fica salvo: reiniciar a voz (ou o computador) não desfaz."""
+        self.mudo = ligado
+        if self._marca_mudo is not None:
+            if ligado:
+                self._marca_mudo.touch()
+            else:
+                self._marca_mudo.unlink(missing_ok=True)
+        if ligado:
+            self.parar()
 
     def ouvindo(self, ligado: bool, limite_s: float = 35.0) -> None:
         """Segura a reprodução enquanto o usuário grava (com limite, caso o fim nunca chegue)."""
@@ -237,9 +250,7 @@ def criar_servidor(locutor: Locutor, transcritor, porta: int) -> ThreadingHTTPSe
                 locutor.parar()
                 self._responder(200, {"ok": True})
             elif self.path == "/mudo":
-                locutor.mudo = bool(corpo.get("ligado"))
-                if locutor.mudo:
-                    locutor.parar()
+                locutor.definir_mudo(bool(corpo.get("ligado")))
                 self._responder(200, {"ok": True, "mudo": locutor.mudo})
             elif self.path == "/ouvindo":
                 locutor.ouvindo(bool(corpo.get("ligado")))
@@ -263,7 +274,7 @@ def main() -> None:
     _log("carregando OmniVoice e Whisper na GPU")
     motor = MotorOmniVoice()
     preparar_frases(motor, {"saudacao": SAUDACAO})
-    locutor = Locutor(motor, TocadorPw())
+    locutor = Locutor(motor, TocadorPw(), dados() / MARCA_MUDO)
     servidor = criar_servidor(locutor, TranscritorWhisper(), VOZ_PORTA)
     _log(f"pronto em 127.0.0.1:{VOZ_PORTA}")
     servidor.serve_forever()

@@ -161,3 +161,13 @@ def test_frases_prontas_geradas_uma_vez(dados_tmp, monkeypatch):
     assert motor.frases == ["Como posso ajudar, senhor?"]
     assert frase_pronta("saudacao").read_bytes() == b"RIFF-bruto-1.2x"
     assert not frase_pronta("saudacao").with_suffix(".bruto.wav").exists()
+
+
+def test_mudo_fica_salvo_depois_de_reiniciar(tmp_path):
+    marca = tmp_path / "mudo"
+    loc = Locutor(MotorFalso(), TocadorFalso(), marca_mudo=marca)
+    assert loc.mudo is False
+    loc.definir_mudo(True)
+    assert marca.exists() and Locutor(MotorFalso(), TocadorFalso(), marca_mudo=marca).mudo is True
+    loc.definir_mudo(False)
+    assert not marca.exists() and Locutor(MotorFalso(), TocadorFalso(), marca_mudo=marca).mudo is False

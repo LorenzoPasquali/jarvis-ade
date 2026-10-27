@@ -19,7 +19,7 @@ from jarvis.cerebro import escuta as escuta_mod
 from jarvis.cerebro import reserva
 from jarvis.cerebro.eventos import FilaEventos
 from jarvis.cerebro.fala import SeparadorFala
-from jarvis.config import RAIZ, dados, frase_pronta
+from jarvis.config import MARCA_MUDO, RAIZ, dados, frase_pronta
 
 ESPERA_PERMISSAO_S = 120
 MAX_ENTRADA_PERMISSAO = 4000  # acima disso o cartão não daria para ler inteiro: nega
@@ -124,7 +124,8 @@ class Cerebro:
         self._cartoes: set[int] = set()
         self._sessoes: list[dict] | None = None
         self._projetos: list[projetos.Projeto] = []
-        self._sistema: dict = {"tipo": "sistema", "voz": True, "orca": True, "modelo": "Claude", "mudo": False,
+        self._sistema: dict = {"tipo": "sistema", "voz": True, "orca": True, "modelo": "Claude",
+                               "mudo": (dados() / MARCA_MUDO).exists(),  # até a voz responder ao /saude
                                "microfone": not (dados() / MARCA_MICROFONE_DESLIGADO).exists()}
         self._ultimo_sistema = 0.0
         self._ultimo_clima = 0.0

@@ -630,3 +630,11 @@ def test_botao_do_microfone_pelo_servidor(servidor_cerebro):
     c.ouvido = OuvidoFalso()
     assert post(base + "/api/microfone", {"ligado": False}, origin=base) == 200
     assert c.microfone_ligado is False and "parar" in c.ouvido.chamadas
+
+
+def test_cerebro_sobe_com_o_mudo_salvo_antes_da_voz_responder(dados_tmp):
+    from jarvis.config import MARCA_MUDO
+
+    (dados_tmp / MARCA_MUDO).touch()
+    c = Cerebro(claude=ClaudeFalso(), falar=lambda t: True, bloqueada=lambda: False, chamar_voz=lambda *a, **k: None)
+    assert c.estado_inicial()[2]["mudo"] is True
