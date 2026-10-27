@@ -100,3 +100,40 @@ def test_area_de_trabalho_minimizado_ou_o_proprio_jarvis_abrem_inteiro(janela, m
     assert not janela.app_em_foco(Tela(None, ativa=Ativa(0x2)), proprias=set())
     assert not janela.app_em_foco(Tela(None, ativa=None), proprias=set())
     assert not janela.app_em_foco(Tela(None, ativa=Ativa(0x260000d)), proprias={0x260000d})
+
+
+class Gravador:
+    def __init__(self, **respostas):
+        self.chamadas, self.respostas = [], respostas
+
+    def __getattr__(self, nome):
+        return lambda *a: self.chamadas.append((nome, a)) or self.respostas.get(nome)
+
+
+def _janela_falsa():
+    from types import SimpleNamespace
+
+    js = []
+    return SimpleNamespace(aviso=Gravador(), aviso_web=Gravador(), janela=Gravador(get_visible=False),
+                           compacta=False, js=js, _posicionar_aviso=lambda: None, _js_aviso=js.append)
+
+
+def test_super_j_abre_a_compacta_com_foco_na_caixa(janela):
+    j = _janela_falsa()
+    janela.JanelaJarvis.mostrar_compacta(j)
+    nomes = [n for n, _ in j.aviso.chamadas]
+    assert ("set_accept_focus", (True,)) in j.aviso.chamadas and "present_with_time" in nomes
+    assert ("grab_focus", ()) in j.aviso_web.chamadas
+    assert "compacto(true)" in j.js[-1] and j.compacta
+
+
+def test_notificacao_sozinha_nao_toma_o_foco(janela):
+    class Resultado:
+        def to_string(self):
+            return "mostrar_aviso"
+
+    j = _janela_falsa()
+    janela.JanelaJarvis._ao_mensagem_aviso(j, None, Resultado())
+    nomes = [n for n, _ in j.aviso.chamadas]
+    assert ("set_accept_focus", (False,)) in j.aviso.chamadas and "show" in nomes
+    assert "present_with_time" not in nomes and not j.aviso_web.chamadas

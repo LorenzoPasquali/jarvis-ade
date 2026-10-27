@@ -131,7 +131,7 @@
     // Dois modos na mesma faixa do canto da tela, que não toma o foco ao aparecer:
     // - notificação: mostra por alguns segundos a última fala, com a janela do Jarvis fechada;
     // - conversa compacta: o senhor chamou o Jarvis com outro app na frente (ou reduziu a janela inteira);
-    //   a conversa acontece aqui, falando ou digitando (clicar na caixa dá o foco à faixa), com o botão de voz,
+    //   a conversa acontece aqui, falando ou digitando (a faixa já abre com o cursor na caixa), com o botão de voz,
     //   "Expandir" para a janela inteira e "×" para fechar e parar de ouvir.
     const ponte = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.jarvis;
     const $ = (id) => document.getElementById(id);
@@ -171,10 +171,10 @@
     }
 
     // Sem nada acontecendo por um tempo depois da resposta, a conversa compacta some (e o Jarvis para de ouvir).
-    // Enquanto o senhor digita, ela fica.
+    // Com texto na caixa, ela fica (o cursor está sempre na caixa, então o foco não diz se o senhor está digitando).
     function agendarFechar() {
       clearTimeout(esconder);
-      const digitando = document.activeElement === $("digitar") || $("digitar").value.trim();
+      const digitando = $("digitar").value.trim();
       if (document.body.dataset.estado === "ocioso" && !digitando) esconder = setTimeout(fechar, FECHA_SOZINHO_MS);
     }
 
@@ -220,15 +220,15 @@
     }
 
     window.jarvis = {
-      // `focar`: veio do "Reduzir" da janela inteira; o cursor já vai para a caixa de texto.
-      compacto(ativo, focar = false) {
+      // Chamada pelo senhor: o cursor já vai para a caixa de texto (a janela GTK dá o foco à faixa).
+      compacto(ativo) {
         if (!ativo) { if (compacto) sair(); return; }
         compacto = true;
         clearTimeout(esconder);
         document.body.classList.add("compacto");
         $("texto").textContent = "";
         caixa.classList.add("visivel");
-        if (focar) $("digitar").focus();
+        $("digitar").focus();
         medir();
         agendarFechar();
       },
@@ -237,8 +237,7 @@
     $("expandir").addEventListener("click", () => { clearTimeout(esconder); avisar("expandir"); });
     $("fechar").addEventListener("click", fechar);
     $("mudo").addEventListener("click", alternarMudo);
-    $("digitar").addEventListener("focus", () => clearTimeout(esconder));
-    $("digitar").addEventListener("blur", () => { if (compacto) agendarFechar(); });
+    $("digitar").addEventListener("input", () => { if (compacto) agendarFechar(); });
     $("entrada").addEventListener("submit", (e) => {
       e.preventDefault();
       const texto = $("digitar").value.trim();

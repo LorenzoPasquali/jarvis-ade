@@ -16,8 +16,9 @@ import gi
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
+gi.require_version("GdkX11", "3.0")
 gi.require_version("WebKit2", "4.1")
-from gi.repository import Gdk, GLib, Gtk, WebKit2  # noqa: E402
+from gi.repository import Gdk, GdkX11, GLib, Gtk, WebKit2  # noqa: E402
 
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
@@ -75,6 +76,13 @@ def app_em_foco(tela: Gdk.Screen, proprias: set[int]) -> bool:
     return "_NET_WM_WINDOW_TYPE_DESKTOP" not in props and "_NET_WM_STATE_HIDDEN" not in props
 
 
+def hora_do_x(janela: Gtk.Window) -> int:
+    """Hora do servidor X para pedir o foco. Fora de um evento GTK (SIGUSR1) a hora do evento é 0, e o Mutter
+    ignora o pedido ("Buggy client sent a _NET_ACTIVE_WINDOW message with a timestamp of 0")."""
+    gdk = janela.get_window()
+    return GdkX11.x11_get_server_time(gdk) if isinstance(gdk, GdkX11.X11Window) else 0
+
+
 def _carregar_depois(web: WebKit2.WebView, uri: str | None) -> bool:
     if uri:
         GLib.timeout_add(1000, lambda: web.load_uri(uri) and GLib.SOURCE_REMOVE)
@@ -129,19 +137,18 @@ class JanelaJarvis:
         area = (monitor or display.get_monitor(0)).get_workarea()  # sem a barra do topo
         self.aviso.move(area.x + area.width - LARGURA_AVISO - 24, area.y + 16)
 
-    def mostrar_compacta(self, focar: bool = False) -> None:
-        """Conversa no canto. Não toma o foco ao aparecer; aceita quando o senhor clica para digitar.
+    def mostrar_compacta(self) -> None:
+        """Conversa no canto, chamada pelo senhor (Super+J, "Jarvis" ou Reduzir): já com o cursor na caixa de texto.
 
-        `focar`: veio do "Reduzir" da janela inteira; a faixa já pega o foco, com o cursor na caixa de texto.
+        Só a notificação que aparece sozinha (`mostrar_aviso`) não toma o foco.
         """
         self.compacta = True
         self.aviso.set_accept_focus(True)
         self._posicionar_aviso()
         self.aviso.show()
-        if focar:
-            self.aviso.present_with_time(Gtk.get_current_event_time() or 0)
-            self.aviso_web.grab_focus()
-        self._js_aviso(f"window.jarvis && window.jarvis.compacto(true, {'true' if focar else 'false'})")
+        self.aviso.present_with_time(Gtk.get_current_event_time() or hora_do_x(self.aviso))
+        self.aviso_web.grab_focus()
+        self._js_aviso("window.jarvis && window.jarvis.compacto(true)")
 
     def mostrar_completa(self) -> None:
         self.compacta = False
@@ -184,7 +191,7 @@ class JanelaJarvis:
         if valor == "fechar":
             self.esconder()
         elif valor == "reduzir" and self.aviso is not None:
-            self.mostrar_compacta(focar=True)  # antes de esconder: o foco passa direto para a faixa
+            self.mostrar_compacta()  # antes de esconder: o foco passa direto para a faixa
             self.esconder()
 
     def _ao_mensagem_aviso(self, _gerente, resultado) -> None:

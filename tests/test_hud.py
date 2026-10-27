@@ -73,6 +73,6 @@ def test_compacta_deixa_digitar_e_tem_botao_de_voz():
 
 def test_janela_reduz_para_a_compacta_e_so_ela_pega_foco():
     py = (RAIZ / "hud/janela.py").read_text()
-    assert '"reduzir"' in py and "mostrar_compacta(focar=True)" in py
+    assert '"reduzir"' in py and "self.mostrar_compacta()" in py.split('"reduzir"')[1]
     assert "set_accept_focus(True)" in py and "set_accept_focus(False)" in py
     assert "set_focus_on_map(False)" in py
