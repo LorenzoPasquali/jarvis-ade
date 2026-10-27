@@ -76,3 +76,12 @@ def test_janela_reduz_para_a_compacta_e_so_ela_pega_foco():
     assert '"reduzir"' in py and "self.mostrar_compacta()" in py.split('"reduzir"')[1]
     assert "set_accept_focus(True)" in py and "set_accept_focus(False)" in py
     assert "set_focus_on_map(False)" in py
+
+
+def test_compacta_mostra_o_estado_so_pela_cor_da_bolinha():
+    html = (RAIZ / "hud/aviso.html").read_text()
+    estilo = html.split("<style>")[1].split("</style>")[0]
+    assert "body.compacto .titulo" in estilo  # sem "Jarvis / Pronto" à vista
+    for estado in ["ouvindo", "pensando", "falando", "desconectado"]:
+        assert f'body.compacto[data-estado="{estado}"]' in estilo
+    assert ".anel\").title" in html  # o nome do estado ainda aparece ao passar o mouse
