@@ -99,6 +99,9 @@ def criar(cerebro, porta: int = 8766, pasta_hud: Path = RAIZ / "hud") -> Threadi
                     self._responder(200)
                 else:
                     self._responder(503, {"erro": "servidor de voz indisponível"})
+            elif rota == "/api/microfone":
+                cerebro.definir_microfone(bool(corpo.get("ligado")))
+                self._responder(200)
             elif rota == "/api/fechar":
                 cerebro.fechar_janela()
                 self._responder(200)

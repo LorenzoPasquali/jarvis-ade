@@ -480,7 +480,7 @@ def test_limite_do_claude_manda_os_proximos_turnos_direto_a_reserva(com_reserva)
     claude.ocupado = False
     c.ao_evento_claude({"type": "result", "is_error": True, "result": "You've hit your session limit · resets 11pm"})
     assert len(gemini.enviados) == 1
-    assert {"tipo": "sistema", "voz": True, "orca": True, "modelo": "Gemini", "mudo": False} in publicados
+    assert {"tipo": "sistema", "voz": True, "orca": True, "modelo": "Gemini", "mudo": False, "microfone": True} in publicados
     _responder(c, c.ao_evento_gemini, gemini, "Olá, senhor.\n\n🔊 Olá, senhor.")
 
     c.mensagem_usuario("como está o portfólio?", falada=False)
@@ -563,3 +563,70 @@ def test_sistema_traz_o_mudo_do_servidor_de_voz(dados_tmp, monkeypatch):
     c._chamar_voz = lambda *a, **k: None  # voz fora do ar: fica o último estado conhecido
     c._atualizar_sistema()
     assert c._sistema["voz"] is False and c._sistema["mudo"] is True
+
+
+# ---------- botão do microfone ----------
+
+class OuvidoFalso:
+    def __init__(self):
+        self.chamadas = []
+
+    def iniciar(self):
+        self.chamadas.append("iniciar")
+
+    def parar(self):
+        self.chamadas.append("parar")
+
+    def cancelar_espera(self):
+        self.chamadas.append("cancelar_espera")
+
+
+def _com_microfone(cerebro_falso):
+    c, _ = cerebro_falso
+    c.ouvido = OuvidoFalso()
+    iniciadas, publicados = [], []
+    c.escuta.iniciar = lambda: iniciadas.append(1)
+    c.publicar = publicados.append
+    c.mostrar_janela = lambda: pytest.fail("com o microfone desligado, 'Jarvis' não abre a janela")
+    return c, iniciadas, publicados
+
+
+def test_microfone_desligado_fecha_o_ouvido_e_super_j_so_abre_para_digitar(cerebro_falso, dados_tmp):
+    c, iniciadas, publicados = _com_microfone(cerebro_falso)
+    c.definir_microfone(False)
+    assert c.ouvido.chamadas == ["parar", "cancelar_espera"]
+    assert {"tipo": "sistema", "microfone": False}.items() <= publicados[-1].items()
+    c.super_j()
+    assert c.janela_aberta and iniciadas == [] and c._estado != "ouvindo"
+    assert c.palavra_jarvis("como estão os projetos?") is None  # transcrição que já estava a caminho
+    c._reabrir_escuta()
+    assert iniciadas == []
+
+
+def test_microfone_desligado_cancela_a_escuta_em_andamento(cerebro_falso):
+    c, _, _ = _com_microfone(cerebro_falso)
+    canceladas = []
+    c.escuta.ativa = True
+    c.escuta.cancelar = lambda: canceladas.append(1)
+    c._estado = "ouvindo"
+    c.definir_microfone(False)
+    assert canceladas == [1] and c._estado == "ocioso"
+
+
+def test_microfone_desligado_continua_desligado_depois_de_reiniciar(cerebro_falso, dados_tmp):
+    c, _, _ = _com_microfone(cerebro_falso)
+    c.definir_microfone(False)
+    novo = Cerebro(claude=ClaudeFalso(), falar=lambda t: True, bloqueada=lambda: False,
+                   chamar_voz=lambda *a, **k: {})
+    assert novo.microfone_ligado is False and novo.estado_inicial()[2]["microfone"] is False
+    c.definir_microfone(True)
+    assert c.ouvido.chamadas[-1] == "iniciar"
+    assert Cerebro(claude=ClaudeFalso(), falar=lambda t: True, bloqueada=lambda: False,
+                   chamar_voz=lambda *a, **k: {}).microfone_ligado is True
+
+
+def test_botao_do_microfone_pelo_servidor(servidor_cerebro):
+    base, c = servidor_cerebro
+    c.ouvido = OuvidoFalso()
+    assert post(base + "/api/microfone", {"ligado": False}, origin=base) == 200
+    assert c.microfone_ligado is False and "parar" in c.ouvido.chamadas

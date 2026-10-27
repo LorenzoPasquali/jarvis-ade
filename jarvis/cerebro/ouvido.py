@@ -125,6 +125,7 @@ class Ouvido:
         self._chamar = chamar
         self._comando = comando or ["pw-record", "--rate", str(TAXA), "--channels", "1", "--format", "s16", "-"]
         self._parando = threading.Event()
+        self._thread: threading.Thread | None = None
         self._proc: subprocess.Popen | None = None
         self._transcricoes: deque[float] = deque()
         self._trava = threading.Lock()
@@ -132,11 +133,18 @@ class Ouvido:
         self._pergunta_ate = 0.0  # 0: não está esperando pergunta
 
     def iniciar(self) -> None:
+        """Abre o microfone. Pode ser chamado de novo depois de `parar()` (botão do microfone)."""
+        if self._thread and self._thread.is_alive() and not self._parando.is_set():
+            return
+        # Cada ligada tem o próprio sinal de parada: o laço anterior, ainda saindo, não continua junto com o novo.
+        self._parando = threading.Event()
         # A thread dona do gravador vive tanto quanto ele: PDEATHSIG segue a thread que o criou.
-        threading.Thread(target=self._laco, daemon=True).start()
+        self._thread = threading.Thread(target=self._laco, args=(self._parando,), daemon=True)
+        self._thread.start()
         print("ouvido: escutando \"Jarvis\"", flush=True)
 
     def parar(self) -> None:
+        """Fecha o microfone (o gravador morre na hora)."""
         self._parando.set()
         if self._proc and self._proc.poll() is None:
             self._proc.kill()
@@ -150,25 +158,25 @@ class Ouvido:
         with self._trava:
             self._pergunta_ate = 0.0
 
-    def _laco(self) -> None:
-        while not self._parando.is_set():
+    def _laco(self, parando: threading.Event) -> None:
+        while not parando.is_set():
             try:
-                self._proc = subprocess.Popen(self._comando, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                              preexec_fn=_morrer_com_o_pai)
+                proc = self._proc = subprocess.Popen(self._comando, stdout=subprocess.PIPE,
+                                                     stderr=subprocess.DEVNULL, preexec_fn=_morrer_com_o_pai)
             except OSError as erro:
                 print(f"ouvido: não abriu o microfone: {erro}", flush=True)
-                self._parando.wait(ESPERA_REINICIO_S)
+                parando.wait(ESPERA_REINICIO_S)
                 continue
             recortador = Recortador()
-            while not self._parando.is_set():
-                bloco = self._proc.stdout.read(BYTES_BLOCO)
+            while not parando.is_set():
+                bloco = proc.stdout.read(BYTES_BLOCO)
                 if len(bloco) < BYTES_BLOCO:  # gravador caiu: abre de novo
                     break
                 self.processar(recortador, bloco, time.time())
-            if self._proc.poll() is None:
-                self._proc.kill()
-            self._proc.wait()
-            self._parando.wait(ESPERA_REINICIO_S)
+            if proc.poll() is None:
+                proc.kill()
+            proc.wait()
+            parando.wait(ESPERA_REINICIO_S)
 
     def processar(self, recortador: Recortador, bloco: bytes, agora: float) -> None:
         esperando = self.esperando_pergunta

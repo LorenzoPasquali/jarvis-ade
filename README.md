@@ -18,7 +18,7 @@ Liga três serviços do systemd do usuário, a janela no login, o comando `jarvi
 - A janela (`hud/janela.py`) sobe escondida no login, pelo `~/.config/autostart/jarvis-hud.desktop`.
 - **Super+J** (ou "Jarvis") abre o Jarvis já ouvindo: com um app na frente (Orca, Chrome…), a conversa fica no canto superior direito, compacta, com uma caixa para digitar, **Expandir** para a janela inteira e **×** para fechar; sem nada na frente (só a área de trabalho), abre a janela inteira. Chamada por você (Super+J, "Jarvis" ou **Reduzir** na janela inteira), a compacta já abre com o cursor na caixa, para digitar sem clicar; o aviso que aparece sozinho, com a janela fechada, nunca toma o foco. A compacta some sozinha 20 s depois da resposta (não com texto na caixa). Quando você para de falar, ele envia; Super+J de novo encerra na hora. Esc fecha.
 - **Super+Shift+J** interrompe a fala.
-- **"Jarvis" em voz alta** (como uma Alexa, sem conta nem chave): um recortador leve na CPU separa cada frase do microfone e só as frases vão ao Whisper que já roda na GPU, decodificando poucos tokens para ver se começam com "Jarvis" (no máximo 20 por minuto). "Jarvis, <pergunta>" de uma vez manda a pergunta direto e abre a janela com o andamento. Só "Jarvis", com a janela fechada, ele responde "Como posso ajudar, senhor?" (frase gerada uma vez em `dados/voz/frases/saudacao.wav`) e abre ouvindo; com a janela aberta, vale como o Super+J: cala a fala e já ouve. O microfone fica aberto o tempo todo para isso; nada sai da máquina.
+- **"Jarvis" em voz alta** (como uma Alexa, sem conta nem chave): um recortador leve na CPU separa cada frase do microfone e só as frases vão ao Whisper que já roda na GPU, decodificando poucos tokens para ver se começam com "Jarvis" (no máximo 20 por minuto). "Jarvis, <pergunta>" de uma vez manda a pergunta direto e abre a janela com o andamento. Só "Jarvis", com a janela fechada, ele responde "Como posso ajudar, senhor?" (frase gerada uma vez em `dados/voz/frases/saudacao.wav`) e abre ouvindo; com a janela aberta, vale como o Super+J: cala a fala e já ouve. O microfone fica aberto o tempo todo para isso (menos com o botão **Microfone desligado**); nada sai da máquina.
 
 ## Usar
 
@@ -26,6 +26,7 @@ Aperte **Super+J** e fale, ou digite na caixa. Não precisa abrir o Orca nem um 
 
 - No centro fica o núcleo do Jarvis, que mostra se ele está ouvindo, pensando ou falando. Em volta, em órbita, ficam as sessões dos agentes, e quem precisa de você aparece em âmbar.
 - **Voz ligada / Mudo**, no canto da janela inteira e na compacta, liga e desliga a resposta em áudio, como `jarvis mudo on|off` (que também muda o botão); o texto continua aparecendo.
+- **Microfone ligado / desligado**, ao lado, é separado do mudo: desligado, o Jarvis não ouve nada (o microfone fica fechado e nem "Jarvis" o chama) e Super+J abre a janela só para digitar. Fica assim até você religar, mesmo depois de reiniciar.
 - Uma ordem falada para um agente, uma nova regra ou um pedido de permissão vira um cartão com botões. Também dá para responder "sim" ou "não" por voz.
 - Com a janela fechada, ele continua avisando por voz, com uma faixa discreta no canto da tela que não tira o foco.
 - Com a tela bloqueada, ele fica quieto. Quando você voltar, faz um resumo do que aconteceu.

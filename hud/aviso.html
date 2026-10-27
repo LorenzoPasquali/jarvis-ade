@@ -62,7 +62,8 @@
     }
     .acoes button:hover { border-color: var(--holo); background: rgba(139, 233, 255, 0.12); }
     #fechar { padding: 4px 10px; }
-    #mudo[data-mudo="true"] { border-color: rgba(255, 184, 77, 0.6); color: var(--ambar); }
+    #mudo[data-mudo="true"],
+    #microfone[data-desligado="true"] { border-color: rgba(255, 184, 77, 0.6); color: var(--ambar); }
 
     /* notificação: só a última fala, curta */
     #texto { margin: 10px 0 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
@@ -114,6 +115,7 @@
       <p class="titulo" style="margin:0"><span class="nome">Jarvis</span><span id="estado"></span></p>
       <div class="acoes">
         <button id="mudo" type="button" title="Silenciar as respostas (só texto)">Voz ligada</button>
+        <button id="microfone" type="button" title="Desligar o microfone: o Jarvis para de ouvir e Super+J abre só para digitar">Microfone ligado</button>
         <button id="expandir" type="button">Expandir</button>
         <button id="fechar" type="button" aria-label="Fechar e parar de ouvir">×</button>
       </div>
@@ -146,6 +148,7 @@
     let esconder = null;
     let resposta = "";
     let mudo = false;
+    let microfone = true;
 
     function avisar(mensagem) { if (ponte) ponte.postMessage(mensagem); }
 
@@ -198,6 +201,21 @@
       botao.dataset.mudo = String(mudo);
     }
 
+    // Botão do microfone, separado do mudo: desligado, o Jarvis não ouve (nem "Jarvis"); dá para digitar.
+    function mostrarMicrofone(valor) {
+      microfone = valor;
+      const botao = $("microfone");
+      botao.textContent = microfone ? "Microfone ligado" : "Microfone desligado";
+      botao.title = microfone ? "Desligar o microfone: o Jarvis para de ouvir e Super+J abre só para digitar" : "Ligar o microfone";
+      botao.dataset.desligado = String(!microfone);
+    }
+
+    function alternarMicrofone() {
+      const anterior = microfone;
+      mostrarMicrofone(!microfone);
+      enviarAoCerebro("/api/microfone", { ligado: microfone }).then((r) => { if (!r || !r.ok) mostrarMicrofone(anterior); });
+    }
+
     function alternarMudo() {
       const anterior = mudo;
       mostrarMudo(!mudo);
@@ -242,6 +260,7 @@
     $("expandir").addEventListener("click", () => { clearTimeout(esconder); avisar("expandir"); });
     $("fechar").addEventListener("click", fechar);
     $("mudo").addEventListener("click", alternarMudo);
+    $("microfone").addEventListener("click", alternarMicrofone);
     $("digitar").addEventListener("input", () => { if (compacto) agendarFechar(); });
     $("entrada").addEventListener("submit", (e) => {
       e.preventDefault();
@@ -272,7 +291,10 @@
           break;
         case "cartao": $("confirmacao").hidden = false; break;
         case "cartao_fim": $("confirmacao").hidden = true; break;
-        case "sistema": if ("mudo" in evento) mostrarMudo(Boolean(evento.mudo)); return;
+        case "sistema":
+          if ("mudo" in evento) mostrarMudo(Boolean(evento.mudo));
+          if ("microfone" in evento) mostrarMicrofone(Boolean(evento.microfone));
+          return;
         default: return;
       }
       if (compacto) {

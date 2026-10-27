@@ -325,3 +325,27 @@ def test_whisper_repetindo_em_ruido_e_descartado():
     from jarvis.voz_cliente import transcricao_util
     assert transcricao_util("E aí " * 40, 10.0) is None
     assert transcricao_util("Não, não, não, espera: abre o portfólio primeiro", 3.0)
+
+
+def test_ouvido_desliga_e_religa_o_microfone():
+    import time as _time
+
+    o = ouvido_mod.Ouvido(lambda resto: None, comando=["sleep", "30"])
+
+    def gravador():
+        for _ in range(50):
+            if o._proc is not None and o._proc.poll() is None:
+                return o._proc
+            _time.sleep(0.05)
+        pytest.fail("o gravador não abriu")
+
+    o.iniciar()
+    primeiro = gravador()
+    o.parar()
+    primeiro.wait(timeout=2)
+    o._proc = None
+    o.iniciar()
+    segundo = gravador()
+    assert segundo is not primeiro and primeiro.poll() is not None
+    o.parar()
+    segundo.wait(timeout=2)

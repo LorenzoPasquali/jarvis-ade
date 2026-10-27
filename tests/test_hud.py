@@ -84,3 +84,10 @@ def test_compacta_mantem_o_anel_sem_o_texto_jarvis_pronto():
     assert "body.compacto .titulo" in estilo  # sem "Jarvis / Pronto" à vista
     assert "body.compacto .anel" not in estilo  # o anel continua o mesmo
     assert ".anel\").title" in html  # o nome do estado ainda aparece ao passar o mouse
+
+
+def test_janelas_tem_botao_do_microfone():
+    for pagina in ["index.html", "aviso.html"]:
+        assert 'id="microfone"' in (RAIZ / f"hud/{pagina}").read_text(), pagina
+    assert '"/api/microfone"' in (RAIZ / "hud/app.js").read_text()
+    assert '"/api/microfone"' in (RAIZ / "hud/aviso.html").read_text()

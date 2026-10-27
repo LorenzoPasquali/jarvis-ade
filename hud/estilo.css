@@ -99,7 +99,8 @@ body.aberto { opacity: 1; }
 }
 
 .controles button:hover { border-color: var(--holo); }
-#mudo[data-mudo="true"] { border-color: rgba(255, 184, 77, 0.6); color: var(--ambar); }
+#mudo[data-mudo="true"],
+#microfone[data-desligado="true"] { border-color: rgba(255, 184, 77, 0.6); color: var(--ambar); }
 
 .painel-sistema { text-align: right; }
 

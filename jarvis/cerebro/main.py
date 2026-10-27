@@ -36,6 +36,7 @@ PAUSA_APOS_ERRO_S = 600
 MAX_HISTORICO = 50
 INTERVALO_SISTEMA_S = 60
 INTERVALO_CLIMA_S = 900  # o clima muda devagar: uma consulta a cada 15 min basta
+MARCA_MICROFONE_DESLIGADO = "microfone-desligado"  # em dados/: um reinício não religa o microfone
 
 
 def tipo_de_erro(texto: str) -> str:
@@ -123,7 +124,8 @@ class Cerebro:
         self._cartoes: set[int] = set()
         self._sessoes: list[dict] | None = None
         self._projetos: list[projetos.Projeto] = []
-        self._sistema: dict = {"tipo": "sistema", "voz": True, "orca": True, "modelo": "Claude", "mudo": False}
+        self._sistema: dict = {"tipo": "sistema", "voz": True, "orca": True, "modelo": "Claude", "mudo": False,
+                               "microfone": not (dados() / MARCA_MICROFONE_DESLIGADO).exists()}
         self._ultimo_sistema = 0.0
         self._ultimo_clima = 0.0
         self._estado = "ocioso"
@@ -251,7 +253,8 @@ class Cerebro:
         é do senhor (fim da saudação; 0.0 = logo depois do "Jarvis"): o próprio ouvido pega a pergunta.
         """
         agora = time.time()
-        if self.escuta.ativa or self.bloqueada() or agora - self._ultima_palavra < INTERVALO_PALAVRA_S:
+        if (not self.microfone_ligado or self.escuta.ativa or self.bloqueada()
+                or agora - self._ultima_palavra < INTERVALO_PALAVRA_S):
             return None
         if self._estado == "falando" and "jarvis" in self._fala_atual.casefold():
             return None  # quem disse "Jarvis" foi a própria fala dele, não o senhor
@@ -276,13 +279,15 @@ class Cerebro:
 
     def pergunta_ouvida(self, texto: str | None) -> None:
         """A pergunta que o ouvido pegou depois do "Jarvis" (None: o senhor não disse nada)."""
-        if texto:
+        if texto and self.microfone_ligado:
             self.mensagem_usuario(texto, falada=True)
         elif not self.escuta.ativa and self._estado == "ouvindo":
             self._definir_estado("pensando" if self._ocupado() else "ocioso")
 
     def super_j(self) -> None:
         self.janela_aberta = True
+        if not self.microfone_ligado:
+            return  # microfone desligado: Super+J só abre a janela, para digitar
         if not self.escuta.ativa:
             if self._ocupado():
                 self._calar_turno = True  # o senhor quer falar: o resto da resposta em andamento fica só no texto
@@ -307,6 +312,33 @@ class Cerebro:
         self._sistema = {**self._sistema, "mudo": bool(resposta.get("mudo", ligado))}
         self.publicar(self._sistema)
         return True
+
+    @property
+    def microfone_ligado(self) -> bool:
+        return self._sistema["microfone"]
+
+    def definir_microfone(self, ligado: bool) -> None:
+        """Botão do microfone, separado do mudo. Desligado, o Jarvis não ouve nada: o ouvido fecha o microfone
+        (nem "Jarvis" o chama) e Super+J só abre a janela, para digitar."""
+        marca = dados() / MARCA_MICROFONE_DESLIGADO
+        if ligado:
+            marca.unlink(missing_ok=True)
+        else:
+            marca.touch()
+        mudou = ligado != self.microfone_ligado
+        self._sistema = {**self._sistema, "microfone": ligado}
+        self.publicar(self._sistema)
+        if self.ouvido is not None:
+            if not ligado:
+                self.ouvido.parar()
+                self.ouvido.cancelar_espera()
+            elif mudou:
+                self.ouvido.iniciar()
+        if not ligado:
+            if self.escuta.ativa:
+                self.escuta.cancelar()
+            if self._estado == "ouvindo":
+                self._definir_estado("pensando" if self._ocupado() else "ocioso")
 
     def _ao_nivel(self, nivel: float) -> None:
         self.publicar({"tipo": "nivel", "valor": round(nivel, 4)})
@@ -485,7 +517,7 @@ class Cerebro:
             if not saude or (not saude.get("falando") and not saude.get("fila")):
                 break
             time.sleep(0.3)
-        if self.janela_aberta and not self.escuta.ativa and not self._ocupado():
+        if self.janela_aberta and self.microfone_ligado and not self.escuta.ativa and not self._ocupado():
             self.escuta.iniciar()
             self._definir_estado("ouvindo")
 
@@ -687,7 +719,10 @@ def main() -> int:
     cerebro.claude.iniciar()
     cerebro.ouvido = Ouvido(cerebro.palavra_jarvis, ao_perguntar=cerebro.pergunta_ouvida, ao_nivel=cerebro._ao_nivel,
                             pausado=lambda: cerebro.escuta.ativa or cerebro.bloqueada())
-    cerebro.ouvido.iniciar()
+    if cerebro.microfone_ligado:
+        cerebro.ouvido.iniciar()
+    else:
+        print("ouvido: microfone desligado pelo senhor", flush=True)
     print("cérebro pronto em 127.0.0.1:8766", flush=True)
     cerebro.laco()
     return 0

@@ -226,6 +226,7 @@
       } catch (_) { /* fuso desconhecido: fica o do computador */ }
     }
     if ("mudo" in evento) mostrarMudo(Boolean(evento.mudo));
+    if ("microfone" in evento) mostrarMicrofone(Boolean(evento.microfone));
     if (evento.modelo) {
       const modelo = $("servico-modelo");
       const reserva = evento.modelo !== "Claude";
@@ -250,6 +251,25 @@
     mostrarMudo(!mudo);
     if (DEMO) return;
     enviarAoCerebro("/api/mudo", { ligado: mudo }).then((r) => { if (!r || !r.ok) mostrarMudo(anterior); });
+  }
+
+  // Botão do microfone, separado do mudo: desligado, o Jarvis não ouve (nem "Jarvis") e Super+J abre só para digitar.
+  let microfone = true;
+
+  function mostrarMicrofone(valor) {
+    microfone = valor;
+    const botao = $("microfone");
+    botao.textContent = microfone ? "Microfone ligado" : "Microfone desligado";
+    botao.title = microfone ? "Desligar o microfone: o Jarvis para de ouvir e Super+J abre só para digitar" : "Ligar o microfone";
+    botao.dataset.desligado = String(!microfone);
+    $("texto").placeholder = microfone ? "Fale ou digite para o Jarvis" : "Digite para o Jarvis (microfone desligado)";
+  }
+
+  function alternarMicrofone() {
+    const anterior = microfone;
+    mostrarMicrofone(!microfone);
+    if (DEMO) return;
+    enviarAoCerebro("/api/microfone", { ligado: microfone }).then((r) => { if (!r || !r.ok) mostrarMicrofone(anterior); });
   }
 
   function definirEstado(valor) {
@@ -388,6 +408,7 @@
   });
   $("veu").addEventListener("click", fechar);
   $("mudo").addEventListener("click", alternarMudo);
+  $("microfone").addEventListener("click", alternarMicrofone);
   $("reduzir").addEventListener("click", reduzir);
   $("entrada").addEventListener("submit", (e) => {
     e.preventDefault();
