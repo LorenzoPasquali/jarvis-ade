@@ -42,26 +42,9 @@
 
     .titulo { flex: 1; min-width: 0; }
 
-    /* conversa compacta: no lugar do anel e do "Jarvis / Pronto", só uma bolinha; a cor é o estado */
-    body.compacto { --cor-estado: var(--nevoa); }
-    body.compacto[data-estado="ouvindo"] { --cor-estado: var(--holo); }
-    body.compacto[data-estado="pensando"] { --cor-estado: #B79CFF; }
-    body.compacto[data-estado="falando"] { --cor-estado: #7DF0A6; }
-    body.compacto[data-estado="desconectado"] { --cor-estado: #FF6B5E; }
+    /* conversa compacta: só o anel, sem "Jarvis / Pronto" (o nome do estado fica no título do anel) */
     body.compacto .titulo { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
     body.compacto .acoes { margin-left: auto; }
-    body.compacto .anel {
-      width: 9px; height: 9px; border: 0;
-      background: var(--cor-estado);
-      box-shadow: 0 0 calc(3px + var(--nivel) * 14px) var(--cor-estado);
-      transform: none;
-      animation: none;
-      transition: background-color 200ms ease-out, box-shadow 90ms linear;
-    }
-    body.compacto[data-estado="ocioso"] .anel { box-shadow: none; opacity: 0.8; }
-    body.compacto[data-estado="pensando"] .anel,
-    body.compacto[data-estado="falando"] .anel { animation: piscar 1.4s ease-in-out infinite; }
-    @keyframes piscar { 50% { opacity: 0.4; } }
     .nome { display: block; font-family: "Michroma", sans-serif; font-size: 11px; letter-spacing: 0.14em; color: var(--holo); }
     #estado { display: block; font-size: 13px; color: var(--nevoa); }
 

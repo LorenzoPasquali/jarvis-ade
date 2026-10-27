@@ -78,10 +78,9 @@ def test_janela_reduz_para_a_compacta_e_so_ela_pega_foco():
     assert "set_focus_on_map(False)" in py
 
 
-def test_compacta_mostra_o_estado_so_pela_cor_da_bolinha():
+def test_compacta_mantem_o_anel_sem_o_texto_jarvis_pronto():
     html = (RAIZ / "hud/aviso.html").read_text()
     estilo = html.split("<style>")[1].split("</style>")[0]
     assert "body.compacto .titulo" in estilo  # sem "Jarvis / Pronto" à vista
-    for estado in ["ouvindo", "pensando", "falando", "desconectado"]:
-        assert f'body.compacto[data-estado="{estado}"]' in estilo
+    assert "body.compacto .anel" not in estilo  # o anel continua o mesmo
     assert ".anel\").title" in html  # o nome do estado ainda aparece ao passar o mouse
