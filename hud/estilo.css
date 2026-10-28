@@ -69,6 +69,8 @@ body.aberto { opacity: 1; }
   justify-content: space-between;
   align-items: flex-start;
   pointer-events: none;
+  /* por cima do palco (que cobre a tela inteira e vem depois): sem isso, o clique nos botões cai nele */
+  z-index: 1;
 }
 
 .marca {

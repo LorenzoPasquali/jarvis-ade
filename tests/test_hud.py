@@ -1,5 +1,10 @@
+import json
+import os
 import signal
+import subprocess
+import sys
 
+import pytest
 from conftest import RAIZ
 from jarvis import hud_cli
 
@@ -89,3 +94,33 @@ def test_compacta_mantem_o_anel_sem_o_texto_jarvis_pronto():
 def test_janela_expandida_tem_botao_do_microfone():
     assert 'id="microfone"' in (RAIZ / "hud/index.html").read_text()
     assert '"/api/microfone"' in (RAIZ / "hud/app.js").read_text()
+
+
+# Abre a página num WebKit fora da tela e pergunta qual elemento está no centro de cada botão do topo.
+# (`.click()` em JS não serve: chama o botão mesmo que outro elemento esteja por cima dele.)
+QUEM_RECEBE_O_CLIQUE = """
+import sys, gi
+gi.require_version("Gtk", "3.0"); gi.require_version("WebKit2", "4.1")
+from gi.repository import GLib, Gtk, WebKit2
+janela = Gtk.OffscreenWindow(); janela.set_default_size(1600, 900)
+web = WebKit2.WebView(); janela.add(web); janela.show_all()
+JS = "JSON.stringify(['mudo','microfone','reduzir'].map(id => {" \\
+     " const r = document.getElementById(id).getBoundingClientRect();" \\
+     " const e = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return e && e.id; }))"
+def pronto(w, res): print(w.evaluate_javascript_finish(res).to_string()); Gtk.main_quit()
+web.connect("load-changed", lambda w, ev: ev == WebKit2.LoadEvent.FINISHED and
+            GLib.timeout_add(300, lambda: w.evaluate_javascript(JS, -1, None, None, None, pronto) and False))
+web.load_uri(sys.argv[1])
+GLib.timeout_add(15000, Gtk.main_quit)
+Gtk.main()
+"""
+
+
+def test_botoes_do_topo_da_janela_expandida_recebem_o_clique():
+    if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
+        pytest.skip("sem tela para o WebKit")
+    saida = subprocess.run([sys.executable, "-c", QUEM_RECEBE_O_CLIQUE, (RAIZ / "hud/index.html").as_uri()],
+                           capture_output=True, text=True, timeout=30)
+    if "No module named 'gi'" in saida.stderr or "Namespace WebKit2 not available" in saida.stderr:
+        pytest.skip("sem WebKit2 4.1")
+    assert json.loads(saida.stdout.strip().splitlines()[-1]) == ["mudo", "microfone", "reduzir"]
